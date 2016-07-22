@@ -1886,6 +1886,33 @@ static TRef rec_cat(jit_State *J, BCReg baseslot, BCReg topslot)
   lua_assert(baseslot < topslot);
   for (s = baseslot; s <= topslot; s++)
     (void)getslot(J, s);  /* Ensure all arguments have a reference. */
+#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
+  if (tref_isnumber (top[0]) && tref_isnumber (top[-1])) {
+    /* Convert 2-3 concatenated numbers into a xrange, see also lj_meta_cat. */
+    TRef dp, tr, *base = &J->base[baseslot];
+    const int has_step = top-2 >= base && tref_isnumber(top[-2]);
+    const int esz = sizeof(double);
+    /* Allocate cdata xrange. */
+    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, CTID_XRANGE), TREF_NIL);
+    /* First convert integers to numbers. */
+    top = has_step ? top-2 : top-1;
+    if (tref_isinteger(top[0])) top[0]=emitir(IRTN(IR_CONV), top[0], IRCONV_NUM_INT);
+    if (tref_isinteger(top[1])) top[1]=emitir(IRTN(IR_CONV), top[1], IRCONV_NUM_INT);
+    if (has_step)
+    if (tref_isinteger(top[2])) top[2]=emitir(IRTN(IR_CONV), top[2], IRCONV_NUM_INT);
+    /* Copy start, stop[, step]; default step is 1. */
+    tr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
+         emitir(IRT(IR_XSTORE, IRT_NUM), tr, top[0]);
+    tr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
+         emitir(IRT(IR_XSTORE, IRT_NUM), tr, top[1]);
+    tr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+2*esz));
+         emitir(IRT(IR_XSTORE, IRT_NUM), tr, has_step ? top[2] : lj_ir_knum(J, 1));
+    J->maxslot = (BCReg)(top - J->base);
+    lua_assert(base == top);
+    /* rec_check_ir(J); rec_check_slots(J); */
+    return dp;
+  } else
+#endif
   if (tref_isnumber_str(top[0]) && tref_isnumber_str(top[-1])) {
     TRef tr, hdr, *trp, *xbase, *base = &J->base[baseslot];
     /* First convert numbers to strings. */

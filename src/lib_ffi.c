@@ -762,6 +762,7 @@ LJLIB_CF(ffi_abi)	LJLIB_REC(.)
 #undef H_
 
 LJLIB_PUSH(top-8) LJLIB_SET(!)  /* Store reference to miscmap table. */
+LJLIB_PUSH(top-8) LJLIB_SET(miscmap) /* Expose to user. */
 
 LJLIB_CF(ffi_metatype)
 {
@@ -773,7 +774,7 @@ LJLIB_CF(ffi_metatype)
   TValue *tv;
   GCcdata *cd;
   if (!(ctype_isstruct(ct->info) || ctype_iscomplex(ct->info) ||
-	ctype_isvector(ct->info)))
+	ctype_isvector(ct->info) || ctype_isxrange (ct->info) ))
     lj_err_arg(L, 1, LJ_ERR_FFI_INVTYPE);
   tv = lj_tab_setinth(L, t, -(int32_t)id);
   if (!tvisnil(tv))

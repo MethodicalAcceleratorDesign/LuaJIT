@@ -45,7 +45,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
 ** |NUM       BFcvUL..  A       | size   |       | type  |       |
 ** |STRUCT    ..cvU..V  A       | size   | field | name? | name? |
 ** |PTR       ..cvR...  A   cid | size   |       | type  |       |
-** |ARRAY     VCcv...V  A   cid | size   |       | type  |       |
+** |ARRAY     VCcvX..V  A   cid | size   |       | type  |       |
 ** |VOID      ..cv....  A       | size   |       | type  |       |
 ** |ENUM                A   cid | size   | const | name? | name? |
 ** |FUNC      ....VS.. cc   cid | nargs  | field | name? | name? |
@@ -60,7 +60,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
 **        ^^  ^^--- bits used for C type conversion dispatch
 */
 
-/* C type info flags.     TFFArrrr  */
+/* C type info flags.     TFFArrrr  CType[4], Flags[8], Align[4], ChildID[16] */
 #define CTF_BOOL	0x08000000u	/* Boolean: NUM, BITFIELD. */
 #define CTF_FP		0x04000000u	/* Floating-point: NUM. */
 #define CTF_CONST	0x02000000u	/* Const qualifier. */
@@ -71,6 +71,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
 #define CTF_REF		0x00800000u	/* Reference: PTR. */
 #define CTF_VECTOR	0x08000000u	/* Vector: ARRAY. */
 #define CTF_COMPLEX	0x04000000u	/* Complex: ARRAY. */
+#define CTF_XRANGE	0x00800000u	/* XRange: ARRAY. */
 #define CTF_UNION	0x00800000u	/* Union: STRUCT. */
 #define CTF_VARARG	0x00800000u	/* Vararg: FUNC. */
 #define CTF_SSEREGPARM	0x00400000u	/* SSE register parameters: FUNC. */
@@ -78,6 +79,7 @@ LJ_STATIC_ASSERT(((int)CT_STRUCT & (int)CT_ARRAY) == CT_STRUCT);
 #define CTF_QUAL	(CTF_CONST|CTF_VOLATILE)
 #define CTF_ALIGN	(CTMASK_ALIGN<<CTSHIFT_ALIGN)
 #define CTF_UCHAR	((char)-1 > 0 ? CTF_UNSIGNED : 0)
+#define CTF_VALARR      (CTF_VECTOR|CTF_COMPLEX|CTF_XRANGE)
 
 /* Flags used in parser.  .F.Ammvf   cp->attr  */
 #define CTFP_ALIGNED	0x00000001u	/* cp->attr + ALIGN */
@@ -230,11 +232,13 @@ typedef struct CTState {
   (((info) & (CTMASK_NUM|CTF_REF)) == CTINFO(CT_PTR, CTF_REF))
 
 #define ctype_isrefarray(info) \
-  (((info) & (CTMASK_NUM|CTF_VECTOR|CTF_COMPLEX)) == CTINFO(CT_ARRAY, 0))
+  (((info) & (CTMASK_NUM|CTF_VALARR)) == CTINFO(CT_ARRAY, 0))
 #define ctype_isvector(info) \
   (((info) & (CTMASK_NUM|CTF_VECTOR)) == CTINFO(CT_ARRAY, CTF_VECTOR))
 #define ctype_iscomplex(info) \
   (((info) & (CTMASK_NUM|CTF_COMPLEX)) == CTINFO(CT_ARRAY, CTF_COMPLEX))
+#define ctype_isxrange(info) \
+  (((info) & (CTMASK_NUM|CTF_XRANGE)) == CTINFO(CT_ARRAY, CTF_XRANGE))
 
 #define ctype_isvltype(info) \
   (((info) & ((CTMASK_NUM|CTF_VLA) - (2u<<CTSHIFT_NUM))) == \
@@ -289,6 +293,7 @@ typedef struct CTState {
   _(DOUBLE,		8,	CT_NUM, CTF_FP|CTALIGN(3)) \
   _(COMPLEX_FLOAT,	8,	CT_ARRAY, CTF_COMPLEX|CTALIGN(2)|CTID_FLOAT) \
   _(COMPLEX_DOUBLE,	16,	CT_ARRAY, CTF_COMPLEX|CTALIGN(3)|CTID_DOUBLE) \
+  _(XRANGE,             24,     CT_ARRAY, CTF_XRANGE |CTALIGN(3)|CTID_DOUBLE) \
   _(P_VOID,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_VOID) \
   _(P_CVOID,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_CVOID) \
   _(P_CCHAR,	CTSIZE_PTR,	CT_PTR, CTALIGN_PTR|CTID_CCHAR) \
@@ -335,7 +340,7 @@ CTTYDEF(CTTYIDDEF)
 /* Simple declaration specifiers. */
 #define CDSDEF(_) \
   _(VOID) _(BOOL) _(CHAR) _(INT) _(FP) \
-  _(LONG) _(LONGLONG) _(SHORT) _(COMPLEX) _(SIGNED) _(UNSIGNED) \
+  _(LONG) _(LONGLONG) _(SHORT) _(COMPLEX) _(XRANGE) _(SIGNED) _(UNSIGNED) \
   _(CONST) _(VOLATILE) _(RESTRICT) _(INLINE) \
   _(TYPEDEF) _(EXTERN) _(STATIC) _(AUTO) _(REGISTER)
 

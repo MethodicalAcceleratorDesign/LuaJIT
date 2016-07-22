@@ -23,6 +23,7 @@
 #include "lj_ctype.h"
 #endif
 #include "lj_strfmt.h"
+#include "lj_char.h"
 #include "lj_lex.h"
 #include "lj_parse.h"
 #include "lj_vm.h"
@@ -1695,13 +1696,16 @@ static void expr_kvalue(TValue *v, ExpDesc *e)
   }
 }
 
+/* Forward declaration. */
+static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCLine line);
+
 /* Parse table constructor expression. */
 static void expr_table(LexState *ls, ExpDesc *e)
 {
   FuncState *fs = ls->fs;
   BCLine line = ls->linenumber;
   GCtab *t = NULL;
-  int vcall = 0, needarr = 0, fixt = 0;
+  int vcall = 0, needarr = 0, fixt = 0, islambda = 0;
   uint32_t narr = 1;  /* First array index. */
   uint32_t nhash = 0;  /* Number of hash entries. */
   BCReg freg = fs->freereg;
@@ -1712,16 +1716,16 @@ static void expr_table(LexState *ls, ExpDesc *e)
   lex_check(ls, '{');
   while (ls->tok != '}') {
     ExpDesc key, val;
-    vcall = 0;
+    vcall = 0, islambda = 0;
     if (ls->tok == '[') {
       expr_bracket(ls, &key);  /* Already calls expr_toval. */
       if (!expr_isk(&key)) expr_index(fs, e, &key);
       if (expr_isnumk(&key) && expr_numiszero(&key)) needarr = 1; else nhash++;
-      lex_check(ls, '=');
+      if (lex_opt(ls, TK_deferred)) islambda = 1; else lex_check(ls, '=');
     } else if ((ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) &&
-	       lj_lex_lookahead(ls) == '=') {
+	       (lj_lex_lookahead(ls) == '=' || ls->lookahead == TK_deferred)) {
       expr_str(ls, &key);
-      lex_check(ls, '=');
+      if (lex_opt(ls, TK_deferred)) islambda = 2; else lex_check(ls, '=');
       nhash++;
     } else {
       expr_init(&key, VKNUM, 0);
@@ -1729,6 +1733,9 @@ static void expr_table(LexState *ls, ExpDesc *e)
       narr++;
       needarr = vcall = 1;
     }
+#ifdef LUAJIT_LAMBDA_DEFER /* LD: 2016.05.02 */
+    if (islambda) parse_body(ls, &val, 0, -1, ls->linenumber); else
+#endif
     expr(ls, &val);
     if (expr_isk(&key) && key.k != VKNIL &&
 	(key.k == VKSTR || expr_isk_nojump(&val))) {
@@ -1803,15 +1810,17 @@ static void expr_table(LexState *ls, ExpDesc *e)
   }
 }
 
-/* Parse function parameters. */
-static BCReg parse_params(LexState *ls, int needself)
+/* Parse function parameters. */                           /* LD: 2016.04.07 */
+static BCReg parse_params(LexState *ls, int needself, int islambda)
 {
   FuncState *fs = ls->fs;
   BCReg nparams = 0;
-  lex_check(ls, '(');
-  if (needself)
-    var_new_lit(ls, nparams++, "self");
-  if (ls->tok != ')') {
+  int has_param = islambda &&
+                  (ls->c == '(' || ls->c == '.' || lj_char_isident(ls->c));
+  lex_check(ls, islambda ? '\\' : '(');
+  int has_paren = !islambda || (has_param && lex_opt(ls, '('));
+  if (needself) var_new_lit(ls, nparams++, "self");
+  if ((has_paren && ls->tok != ')') || (!has_paren && has_param)) {
     do {
       if (ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) {
 	var_new(ls, nparams++, lex_str(ls));
@@ -1827,15 +1836,16 @@ static BCReg parse_params(LexState *ls, int needself)
   var_add(ls, nparams);
   lua_assert(fs->nactvar == nparams);
   bcreg_reserve(fs, nparams);
-  lex_check(ls, ')');
+  if (has_paren) lex_check(ls, ')');
   return nparams;
 }
 
 /* Forward declaration. */
 static void parse_chunk(LexState *ls);
+static void parse_return(LexState *ls, int islambda);
 
-/* Parse body of a function. */
-static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
+/* Parse body of a function. */                            /* LD: 2016.04.07 */
+static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCLine line)
 {
   FuncState fs, *pfs = ls->fs;
   FuncScope bl;
@@ -1844,12 +1854,19 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
   fs_init(ls, &fs);
   fscope_begin(&fs, &bl, 0);
   fs.linedefined = line;
-  fs.numparams = (uint8_t)parse_params(ls, needself);
+  fs.numparams = islambda < 0 ? 0 : (uint8_t)parse_params(ls, needself, islambda);
   fs.bcbase = pfs->bcbase + pfs->pc;
   fs.bclim = pfs->bclim - pfs->pc;
   bcemit_AD(&fs, BC_FUNCF, 0, 0);  /* Placeholder. */
+  if (islambda > 0) {
+    if (lex_opt(ls, TK_fatarrow)) { islambda=0; goto body; }
+    else { lex_opt(ls, TK_arrow); parse_return(ls, 1); }
+  } else if (islambda < 0) { parse_return(ls, 1);
+  } else {
+  body:
   parse_chunk(ls);
   if (ls->tok != TK_end) lex_match(ls, TK_end, TK_function, line);
+  }
   pt = fs_finish(ls, (ls->lastline = ls->linenumber));
   pfs->bcbase = ls->bcstack + oldbase;  /* May have been reallocated. */
   pfs->bclim = (BCPos)(ls->sizebcstack - oldbase);
@@ -1864,7 +1881,7 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, BCLine line)
       pfs->flags |= PROTO_FIXUP_RETURN;
     pfs->flags |= PROTO_CHILD;
   }
-  lj_lex_next(ls);
+  if (!islambda) lj_lex_next(ls);
 }
 
 /* Parse expression list. Last expression is left open. */
@@ -1879,6 +1896,9 @@ static BCReg expr_list(LexState *ls, ExpDesc *v)
   }
   return n;
 }
+
+/* Forward declaration. */
+static void expr_simple(LexState *ls, ExpDesc *v);
 
 /* Parse function argument list. */
 static void parse_args(LexState *ls, ExpDesc *e)
@@ -1908,6 +1928,10 @@ static void parse_args(LexState *ls, ExpDesc *e)
     expr_init(&args, VKSTR, 0);
     args.u.sval = strV(&ls->tokval);
     lj_lex_next(ls);
+#ifdef LUAJIT_LAMBDA_DCALL /* LD: 2016.04.20 */
+  } else if (ls->tok == '\\') {
+    expr_simple(ls, &args);
+#endif
   } else {
     err_syntax(ls, LJ_ERR_XFUNARG);
     return;  /* Silence compiler. */
@@ -1957,7 +1981,11 @@ static void expr_primary(LexState *ls, ExpDesc *v)
       expr_str(ls, &key);
       bcemit_method(fs, v, &key);
       parse_args(ls, v);
-    } else if (ls->tok == '(' || ls->tok == TK_string || ls->tok == '{') {
+    } else if (ls->tok == '(' || ls->tok == TK_string || ls->tok == '{'
+#ifdef LUAJIT_LAMBDA_DCALL /* LD: 2016.04.20 */
+                                                      || ls->tok == '\\'
+#endif
+              ) {
       expr_tonextreg(fs, v);
       if (LJ_FR2) bcreg_reserve(fs, 1);
       parse_args(ls, v);
@@ -2003,8 +2031,13 @@ static void expr_simple(LexState *ls, ExpDesc *v)
     return;
   case TK_function:
     lj_lex_next(ls);
-    parse_body(ls, v, 0, ls->linenumber);
+    parse_body(ls, v, 0, 0, ls->linenumber);
     return;
+#ifdef LUAJIT_LAMBDA_SYNTAX /* LD: 2016.04.07 */
+  case '\\':
+    parse_body(ls, v, 0, 1, ls->linenumber);
+    return;
+#endif
   default:
     expr_primary(ls, v);
     return;
@@ -2243,7 +2276,7 @@ static void parse_local(LexState *ls)
     v.u.s.aux = fs->varmap[fs->freereg];
     bcreg_reserve(fs, 1);
     var_add(ls, 1);
-    parse_body(ls, &b, 0, ls->linenumber);
+    parse_body(ls, &b, 0, 0, ls->linenumber);
     /* bcemit_store(fs, &v, &b) without setting VSTACK_VAR_RW. */
     expr_free(fs, &b);
     expr_toreg(fs, &b, v.u.s.info);
@@ -2257,6 +2290,32 @@ static void parse_local(LexState *ls)
     } while (lex_opt(ls, ','));
     if (lex_opt(ls, '=')) {  /* Optional RHS. */
       nexps = expr_list(ls, &e);
+#ifdef LUAJIT_LOCAL_INTABLE                                /* LD: 2016.04.29 */
+    } else if (lex_opt(ls, TK_in)) { /* Optional RHS. */
+      FuncState *fs = ls->fs;
+      BCReg vars = fs->nactvar, regs = fs->freereg;
+      lua_assert(vars == regs);			/* sanity check */
+      bcreg_reserve(fs, nvars);			/* reserve regs for n vars */
+      var_new_lit(ls, nvars, "(in)");		/* create hidden '(in)' var */
+      expr(ls, &e);				/* parse table expr */
+      assign_adjust(ls, nvars+1, nvars+1, &e);	/* discharge expr to '(in)' */
+      var_add(ls, nvars+1);			/* expose vars + '(in)' */
+      for (nexps=0; nexps < nvars; nexps++) {
+	ExpDesc k, v;
+	expr_init(&e, VNONRELOC, vars+nvars);	/* load table expr */
+	expr_init(&k, VKSTR, 0);		/* set key from var name */
+	k.u.sval = strref(var_get(ls, fs, vars+nexps).name);
+	expr_index(fs, &e, &k);			/* set key index in table */
+	expr_init(&v, VLOCAL, vars+nexps);	/* set dest. var */
+	v.u.s.aux = fs->varmap[regs+nexps];	/* VLOCAL vstack index */
+	bcemit_store(fs, &v, &e);		/* store value to var */
+      }
+      var_remove(ls, vars+nvars);		/* drop hidden '(in)' var */
+      fs->freereg--, ls->vtop--;		/* optional, see parse_chunk */
+      lua_assert(fs->nactvar == vars+nvars);	/* sanity checks */
+      lua_assert(fs->freereg == regs+nvars);
+      return;
+#endif
     } else {  /* Or implicitly set to nil. */
       e.k = VVOID;
       nexps = 0;
@@ -2281,7 +2340,7 @@ static void parse_func(LexState *ls, BCLine line)
     needself = 1;
     expr_field(ls, &v);
   }
-  parse_body(ls, &b, needself, line);
+  parse_body(ls, &b, needself, 0, line);
   fs = ls->fs;
   bcemit_store(fs, &v, &b);
   fs->bcbase[fs->pc - 1].line = line;  /* Set line for the store. */
@@ -2300,18 +2359,20 @@ static int parse_isend(LexToken tok)
   }
 }
 
-/* Parse 'return' statement. */
-static void parse_return(LexState *ls)
+/* Parse 'return' statement. */                            /* LD: 2016.04.07 */
+static void parse_return(LexState *ls, int islambda)
 {
   BCIns ins;
   FuncState *fs = ls->fs;
-  lj_lex_next(ls);  /* Skip 'return'. */
+  int has_list = islambda && lex_opt(ls, '(');
+  if (!islambda) lj_lex_next(ls); /* Skip 'return'. */
   fs->flags |= PROTO_HAS_RETURN;
-  if (parse_isend(ls->tok) || ls->tok == ';') {  /* Bare return. */
+  if (parse_isend(ls->tok) || ls->tok == ';'     /* Bare return. */
+                           || (has_list && ls->tok == ')')) {
     ins = BCINS_AD(BC_RET0, 0, 1);
   } else {  /* Return with one or more values. */
     ExpDesc e;  /* Receives the _last_ expression in the list. */
-    BCReg nret = expr_list(ls, &e);
+    BCReg nret = !islambda || has_list ? expr_list(ls,&e) : (expr(ls,&e),1);
     if (nret == 1) {  /* Return one result. */
       if (e.k == VCALL) {  /* Check for tail call. */
 	BCIns *ip = bcptr(fs, &e);
@@ -2333,6 +2394,7 @@ static void parse_return(LexState *ls)
       }
     }
   }
+  if (islambda && has_list) lex_check(ls, ')');
   if (fs->flags & PROTO_CHILD)
     bcemit_AJ(fs, BC_UCLO, 0, 0);  /* May need to close upvalues first. */
   bcemit_INS(fs, ins);
@@ -2646,7 +2708,7 @@ static int parse_stmt(LexState *ls)
     parse_local(ls);
     break;
   case TK_return:
-    parse_return(ls);
+    parse_return(ls, 0);
     return 1;  /* Must be last. */
   case TK_break:
     lj_lex_next(ls);

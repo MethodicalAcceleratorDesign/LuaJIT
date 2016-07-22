@@ -711,7 +711,8 @@ LJFOLDF(kfold_add_kgc)
     CType *ct = ctype_raw(ctype_ctsG(J2G(J)), gco2cd(o)->ctypeid);
     if (ctype_isnum(ct->info) || ctype_isenum(ct->info) ||
 	ctype_isptr(ct->info) || ctype_isfunc(ct->info) ||
-	ctype_iscomplex(ct->info) || ctype_isvector(ct->info))
+	ctype_iscomplex(ct->info) || ctype_isvector(ct->info) ||
+	ctype_isxrange(ct->info))
       return lj_ir_kkptr(J, (char *)o + ofs);
   }
 #endif

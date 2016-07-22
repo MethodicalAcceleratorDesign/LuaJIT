@@ -67,6 +67,7 @@
   _("__signed",		0,	CTOK_SIGNED) \
   _("__signed__",	0,	CTOK_SIGNED) \
   _("unsigned",		0,	CTOK_UNSIGNED) \
+  _("xrange",		0,	CTOK_XRANGE) \
   /* Type qualifiers. */ \
   _("const",		0,	CTOK_CONST) \
   _("__const",		0,	CTOK_CONST) \
@@ -515,6 +516,11 @@ static void ctype_repr(CTRepr *ctr, CTypeID id)
 	if (size == 2*sizeof(float)) ctype_preplit(ctr, "float");
 	ctype_preplit(ctr, "complex");
 	return;
+#ifdef LUAJIT_CTYPE_XRANGE                                  /* LD: 2016.05.14 */
+      } else if ((info & CTF_XRANGE)) {
+        ctype_preplit(ctr, "xrange");
+        return;
+#endif
       } else {
 	ctype_preplit(ctr, ")))");
 	ctype_prepnum(ctr, size);

@@ -26,11 +26,14 @@ static const luaL_Reg lj_lib_load[] = {
   { LUA_DBLIBNAME,	luaopen_debug },
   { LUA_BITLIBNAME,	luaopen_bit },
   { LUA_JITLIBNAME,	luaopen_jit },
+#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
+  { LUA_FFILIBNAME,	luaopen_ffi },
+#endif
   { NULL,		NULL }
 };
 
 static const luaL_Reg lj_lib_preload[] = {
-#if LJ_HASFFI
+#if LJ_HASFFI && !defined(LUAJIT_CTYPE_XRANGE)             /* LD: 2016.05.14 */
   { LUA_FFILIBNAME,	luaopen_ffi },
 #endif
   { NULL,		NULL }
