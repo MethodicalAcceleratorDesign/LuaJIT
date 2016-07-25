@@ -789,7 +789,7 @@ static void cp_push_type(CPDecl *decl, CTypeID id)
     cp_push(decl, info & ~CTMASK_CID, size);  /* Copy type. */
     break;
   case CT_ARRAY:
-    if ((ct->info & (CTF_VECTOR|CTF_COMPLEX))) {
+    if ((ct->info & (CTF_VECTOR|CTF_COMPLEX|CTF_XRANGE))) {
       info |= (decl->attr & CTF_QUAL);
       decl->attr &= ~CTF_QUAL;
     }
@@ -1481,7 +1481,7 @@ static CPscl cp_decl_spec(CPState *cp, CPDecl *decl, CPscl scl)
       continue;
     }
     if (sz || tdef ||
-	(cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX)))
+ (cds & (CDF_SHORT|CDF_LONG|CDF_SIGNED|CDF_UNSIGNED|CDF_COMPLEX|CDF_XRANGE)))
       break;
     switch (cp->tok) {
     case CTOK_STRUCT:
@@ -1513,6 +1513,10 @@ end_decl:
 
   if ((cds & CDF_COMPLEX))  /* Use predefined complex types. */
     tdef = sz == 4 ? CTID_COMPLEX_FLOAT : CTID_COMPLEX_DOUBLE;
+#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
+  else if ((cds & CDF_XRANGE))  /* Use predefined xrange type. */
+    tdef = CTID_XRANGE;
+#endif
 
   if (tdef) {
     cp_push_type(decl, tdef);

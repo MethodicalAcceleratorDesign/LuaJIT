@@ -40,6 +40,18 @@
 static lua_State *globalL = NULL;
 static const char *progname = LUA_PROGNAME;
 
+#if defined(__MINGW32__) || defined(__MINGW64__)
+#include <sys/stat.h>
+
+#undef     lua_stdin_is_tty
+static int lua_stdin_is_tty(void)
+{
+  struct stat stats;
+  fstat(0, &stats);
+  return S_ISFIFO(stats.st_mode) || isatty(0);
+}
+#endif
+
 #if !LJ_TARGET_CONSOLE
 static void lstop(lua_State *L, lua_Debug *ar)
 {

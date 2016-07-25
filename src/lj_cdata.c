@@ -148,6 +148,11 @@ collect_attrib:
       } else if ((ct->info & (CTF_VECTOR|CTF_COMPLEX))) {
 	if ((ct->info & CTF_COMPLEX)) idx &= 1;
 	*qual |= CTF_CONST;  /* Valarray elements are constant. */
+#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
+      } else if ((ct->info & CTF_XRANGE)) {
+        *qual |= 1;  /* Block num index to emulate struct-like fields. */
+        return ct;  /* But return the resolved raw type. */
+#endif
       }
       *pp = p + idx*(int32_t)sz;
       return ct;
@@ -181,6 +186,17 @@ collect_attrib:
 	  return ct;
 	}
       }
+#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
+    } else if (ctype_isxrange(ct->info)) { /* See also recff_cdata_index */
+        if ((name->len == 5 && !memcmp(strdata(name), "start", 5)) ||
+            (name->len == 4 && !memcmp(strdata(name), "stop" , 4)) ||
+            (name->len == 4 && !memcmp(strdata(name), "step" , 4))) {
+          *qual |= CTF_CONST;  /* XRange fields are constant. */
+          *pp = p + (strdata(name)[2] == 'o') *   sizeof(double)
+                  + (strdata(name)[2] == 'e') * 2*sizeof(double);
+          return ct;
+        }
+#endif
     } else if (cd->ctypeid == CTID_CTYPEID) {
       /* Allow indexing a (pointer to) struct constructor to get constants. */
       CType *sct = ctype_raw(cts, *(CTypeID *)p);

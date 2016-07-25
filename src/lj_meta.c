@@ -21,6 +21,7 @@
 #include "lj_vm.h"
 #include "lj_strscan.h"
 #include "lj_strfmt.h"
+#include "lj_cdata.h"
 #include "lj_lib.h"
 
 /* -- Metamethod handling ------------------------------------------------- */
@@ -239,6 +240,20 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
 {
   int fromc = 0;
   if (left < 0) { left = -left; fromc = 1; }
+#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
+  if (tvisnumber(top) && tvisnumber(top-1)) {
+    /* Convert 2-3 concatenated numbers into a xrange, see also rec_cat. */
+    const int has_step = left > 1 && tvisnumber(top-2);
+    /* Allocate cdata xrange. */
+    GCcdata *cd = lj_cdata_new(ctype_cts(L), CTID_XRANGE, 3*sizeof(double));
+    /* Copy start, stop[, step], default step is 1. */
+    top = has_step ? top-2 : top-1;
+    ((double *)cdataptr(cd))[0] = numV(top);
+    ((double *)cdataptr(cd))[1] = numV(top+1);
+    ((double *)cdataptr(cd))[2] = has_step ? numV(top+2) : 1;
+    setcdataV(L, top, cd);
+  } else
+#endif
   do {
     if (!(tvisstr(top) || tvisnumber(top)) ||
 	!(tvisstr(top-1) || tvisnumber(top-1))) {
