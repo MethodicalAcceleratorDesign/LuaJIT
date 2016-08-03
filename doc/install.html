@@ -486,7 +486,12 @@ make HOST_CC="clang -m32 -arch i386" CROSS="$(dirname $ICC)/" \
 ISDKP=$(xcrun --sdk iphoneos --show-sdk-path)
 ICC=$(xcrun --sdk iphoneos --find clang)
 ISDKF="-arch arm64 -isysroot $ISDKP"
+<<<<<<< HEAD
 make CROSS="$(dirname $ICC)/" TARGET_FLAGS="$ISDKF" TARGET_SYS=iOS
+=======
+make DEFAULT_CC=clang CROSS="$(dirname $ICC)/" \
+     TARGET_FLAGS="$ISDKF" TARGET_SYS=iOS
+>>>>>>> f6f838f840b725eaf87fa859b1a2bdc7a695d3a7
 </pre>
 
 <h3 id="consoles">Cross-compiling for consoles</h3>
