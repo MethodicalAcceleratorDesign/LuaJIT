@@ -770,14 +770,13 @@ LJLIB_CF(ffi_metatype)
   CTypeID id = ffi_checkctype(L, cts, NULL);
   GCtab *mt = lj_lib_checktab(L, 2);
   GCtab *t = cts->miscmap;
-  CType *ct = ctype_get(cts, id);  /* Only allow raw types. */
+  CType *ct = ctype_raw(cts, id);  /* Only allow raw types. */
   TValue *tv;
   GCcdata *cd;
-  while (ctype_isattrib(ct->info))
-    ct = ctype_child(cts, ct);
   if (!(ctype_isstruct(ct->info) || ctype_iscomplex(ct->info) ||
 	ctype_isvector(ct->info) || ctype_isxrange (ct->info) ))
     lj_err_arg(L, 1, LJ_ERR_FFI_INVTYPE);
+  id = ctype_typeid(cts, ct);
   tv = lj_tab_setinth(L, t, -(int32_t)id);
   if (!tvisnil(tv))
     lj_err_caller(L, LJ_ERR_PROTMT);
