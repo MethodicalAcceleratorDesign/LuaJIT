@@ -773,6 +773,8 @@ LJLIB_CF(ffi_metatype)
   CType *ct = ctype_get(cts, id);  /* Only allow raw types. */
   TValue *tv;
   GCcdata *cd;
+  while (ctype_isattrib(ct->info))
+    ct = ctype_child(cts, ct);
   if (!(ctype_isstruct(ct->info) || ctype_iscomplex(ct->info) ||
 	ctype_isvector(ct->info) || ctype_isxrange (ct->info) ))
     lj_err_arg(L, 1, LJ_ERR_FFI_INVTYPE);
