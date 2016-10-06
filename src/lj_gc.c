@@ -669,6 +669,7 @@ static size_t gc_onestep(lua_State *L)
 /* Perform a limited amount of incremental GC steps. */
 int LJ_FASTCALL lj_gc_step(lua_State *L)
 {
+  // fprintf(stderr, "%s\n", __func__);
   global_State *g = G(L);
   GCSize lim;
   int32_t ostate = g->vmstate;
@@ -701,6 +702,7 @@ int LJ_FASTCALL lj_gc_step(lua_State *L)
 /* Ditto, but fix the stack top first. */
 void LJ_FASTCALL lj_gc_step_fixtop(lua_State *L)
 {
+  // fprintf(stderr, "%s\n", __func__);
   if (curr_funcisL(L)) L->top = curr_topL(L);
   lj_gc_step(L);
 }
@@ -709,6 +711,7 @@ void LJ_FASTCALL lj_gc_step_fixtop(lua_State *L)
 /* Perform multiple GC steps. Called from JIT-compiled code. */
 int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps)
 {
+  // fprintf(stderr, "%s\n", __func__);
   lua_State *L = gco2th(gcref(g->cur_L));
   L->base = tvref(G(L)->jit_base);
   L->top = curr_topL(L);
@@ -722,6 +725,7 @@ int LJ_FASTCALL lj_gc_step_jit(global_State *g, MSize steps)
 /* Perform a full GC cycle. */
 void lj_gc_fullgc(lua_State *L)
 {
+  // fprintf(stderr, "%s\n", __func__);
   global_State *g = G(L);
   int32_t ostate = g->vmstate;
   setvmstate(g, GC);
