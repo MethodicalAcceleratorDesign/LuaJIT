@@ -248,8 +248,7 @@ GCstr *lj_parse_keepstr(LexState *ls, const char *str, size_t len)
   return s;
 }
 
-/* LD: 2016.10.06 */
-static void lj_parse_keepstr2(LexState *ls, FuncState *pfs)
+static void lj_parse_keepstr2(LexState *ls, FuncState *pfs)/* LD: 2016.10.06 */
 {
   if (ls->tok == TK_name) {
     /* NOBARRIER: the key is new or kept alive. */
@@ -1834,7 +1833,7 @@ static void expr_table(LexState *ls, ExpDesc *e)
       narr++;
       needarr = vcall = 1;
     }
-#ifdef LUAJIT_LAMBDA_DEFER /* LD: 2016.05.02 */
+#ifdef LUAJIT_LAMBDA_DEFER                                 /* LD: 2016.05.02 */
     if (islambda) parse_body(ls, &val, 0, -1, ls->linenumber); else
 #endif
     expr(ls, &val);
@@ -2034,7 +2033,7 @@ static void parse_args(LexState *ls, ExpDesc *e)
     expr_init(&args, VKSTR, 0);
     args.u.sval = strV(&ls->tokval);
     lj_lex_next(ls);
-#ifdef LUAJIT_LAMBDA_DCALL /* LD: 2016.04.20 */
+#ifdef LUAJIT_LAMBDA_DCALL                                 /* LD: 2016.04.20 */
   } else if (ls->tok == '\\') {
     expr_simple(ls, &args);
 #endif
@@ -2089,7 +2088,7 @@ static void expr_primary(LexState *ls, ExpDesc *v)
       bcemit_method(fs, v, &key);
       parse_args(ls, v);
     } else if (ls->tok == '(' || ls->tok == TK_string || ls->tok == '{'
-#ifdef LUAJIT_LAMBDA_DCALL /* LD: 2016.04.20 */
+#ifdef LUAJIT_LAMBDA_DCALL                                 /* LD: 2016.04.20 */
                                                       || ls->tok == '\\'
 #endif
               ) {
@@ -2141,7 +2140,7 @@ static void expr_simple(LexState *ls, ExpDesc *v)
     lj_lex_next(ls);
     parse_body(ls, v, 0, 0, ls->linenumber);
     return;
-#ifdef LUAJIT_LAMBDA_SYNTAX /* LD: 2016.04.07 */
+#ifdef LUAJIT_LAMBDA_SYNTAX                                /* LD: 2016.04.07 */
   case '\\':
     parse_body(ls, v, 0, 1, ls->linenumber);
     return;
@@ -2214,7 +2213,7 @@ static void expr_unop(LexState *ls, ExpDesc *v)
   } else if (ls->tok == '#') {
     op = BC_LEN;
   } else {
-    if (ls->tok == '+') lj_lex_next(ls);
+    if (ls->tok == '+') lj_lex_next(ls);                   /* LD: 2016.10.12 */
     expr_simple(ls, v);
     return;
   }
