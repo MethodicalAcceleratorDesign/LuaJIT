@@ -2214,6 +2214,7 @@ static void expr_unop(LexState *ls, ExpDesc *v)
   } else if (ls->tok == '#') {
     op = BC_LEN;
   } else {
+    if (ls->tok == '+') lj_lex_next(ls);
     expr_simple(ls, v);
     return;
   }
