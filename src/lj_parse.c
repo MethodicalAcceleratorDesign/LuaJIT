@@ -1821,11 +1821,11 @@ static void expr_table(LexState *ls, ExpDesc *e)
       expr_bracket(ls, &key);  /* Already calls expr_toval. */
       if (!expr_isk(&key)) expr_index(fs, e, &key);
       if (expr_isnumk(&key) && expr_numiszero(&key)) needarr = 1; else nhash++;
-      if (lex_opt(ls, TK_deferred)) islambda = 1; else lex_check(ls, '=');
+      if (lex_opt(ls, TK_deferred)) islambda = -1; else lex_check(ls, '=');
     } else if ((ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) &&
 	       (lj_lex_lookahead(ls) == '=' || ls->lookahead == TK_deferred)) {
       expr_str(ls, &key);
-      if (lex_opt(ls, TK_deferred)) islambda = 2; else lex_check(ls, '=');
+      if (lex_opt(ls, TK_deferred)) islambda = -1; else lex_check(ls, '=');
       nhash++;
     } else {
       expr_init(&key, VKNUM, 0);
@@ -1834,7 +1834,7 @@ static void expr_table(LexState *ls, ExpDesc *e)
       needarr = vcall = 1;
     }
 #ifdef LUAJIT_LAMBDA_DEFER                                 /* LD: 2016.05.02 */
-    if (islambda) parse_body(ls, &val, 0, -1, ls->linenumber); else
+    if (islambda) parse_body(ls, &val, 0, islambda, ls->linenumber); else
 #endif
     expr(ls, &val);
     if (expr_isk(&key) && key.k != VKNIL &&
@@ -1962,8 +1962,8 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCL
   bcemit_AD(&fs, BC_FUNCF, 0, 0);  /* Placeholder. */
   if (islambda > 0) {
     if (lex_opt(ls, TK_fatarrow)) { islambda=0; goto body; }
-    lex_opt(ls, TK_arrow);   parse_return(ls, 1); lj_parse_keepstr2(ls, pfs);
-  } else if (islambda < 0) { parse_return(ls, 1);
+    lex_opt(ls, TK_arrow);   parse_return(ls, islambda); lj_parse_keepstr2(ls, pfs);
+  } else if (islambda < 0) { parse_return(ls, islambda);
   } else {
 body:
     parse_chunk(ls);
@@ -2484,7 +2484,7 @@ static void parse_return(LexState *ls, int islambda)
   // fprintf(stderr, "%s:{%d}\n", __func__, ls->lastline);
   BCIns ins;
   FuncState *fs = ls->fs;
-  int has_list = islambda && lex_opt(ls, '(');
+  int has_list = islambda > 0 && lex_opt(ls, '(');
   if (!islambda) lj_lex_next(ls); /* Skip 'return'. */
   fs->flags |= PROTO_HAS_RETURN;
   if (parse_isend(ls->tok) || ls->tok == ';'     /* Bare return. */
@@ -2514,7 +2514,7 @@ static void parse_return(LexState *ls, int islambda)
       }
     }
   }
-  if (islambda && has_list) lex_check(ls, ')');
+  if (has_list) lex_check(ls, ')');
   if (fs->flags & PROTO_CHILD)
     bcemit_AJ(fs, BC_UCLO, 0, 0);  /* May need to close upvalues first. */
   bcemit_INS(fs, ins);
