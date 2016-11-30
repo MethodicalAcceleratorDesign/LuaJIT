@@ -363,7 +363,7 @@ LJLIB_CF(debug_debug)
 {
   for (;;) {
     char buffer[250];
-    fputs("lua_debug> ", stderr);
+    fputs("mad_debug> ", stderr);
     if (fgets(buffer, sizeof(buffer), stdin) == 0 ||
 	strcmp(buffer, "cont\n") == 0)
       return 0;
