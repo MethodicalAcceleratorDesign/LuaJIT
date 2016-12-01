@@ -2414,6 +2414,7 @@ static void parse_local(LexState *ls)
       BCReg vars = fs->nactvar, regs = fs->freereg;
       lua_assert(vars == regs);			/* sanity check */
       bcreg_reserve(fs, nvars);			/* reserve regs for n vars */
+      bcemit_nil(fs, vars, nvars);              /* set to nil for trace rec. */
       var_new_lit(ls, nvars, "(in)");		/* create hidden '(in)' var */
       expr(ls, &e);				/* parse table expr */
       assign_adjust(ls, nvars+1, nvars+1, &e);	/* discharge expr to '(in)' */

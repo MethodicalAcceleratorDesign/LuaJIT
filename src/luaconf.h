@@ -153,4 +153,14 @@
 #define luai_apicheck(L, o)	{ (void)L; }
 #endif
 
+#if 0
+/* special assert that loops to let debugger to catch it through the process ID
+   and perform a backtrace. (see also ljamalg.c) */
+
+#undef  assert
+#define assert(c) ((void)( (c) || (__assert_fail(#c, __FILE__, __LINE__, __func__),1) ))
+
+void __assert_fail(const char *assertion, const char *file, int line, const char *function);
+#endif
+
 #endif
