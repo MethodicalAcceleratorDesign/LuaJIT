@@ -1,6 +1,6 @@
 /*
 ** ARM64 instruction emitter.
-** Copyright (C) 2005-2016 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
 **
 ** Contributed by Djordje Kovacevic and Stefan Pejic from RT-RK.com.
 ** Sponsored by Cisco Systems, Inc.
@@ -74,6 +74,11 @@ static uint32_t emit_isfpk64(uint64_t n)
 
 /* -- Emit basic instructions --------------------------------------------- */
 
+static void emit_dnma(ASMState *as, A64Ins ai, Reg rd, Reg rn, Reg rm, Reg ra)
+{
+  *--as->mcp = ai | A64F_D(rd) | A64F_N(rn) | A64F_M(rm) | A64F_A(ra);
+}
+
 static void emit_dnm(ASMState *as, A64Ins ai, Reg rd, Reg rn, Reg rm)
 {
   *--as->mcp = ai | A64F_D(rd) | A64F_N(rn) | A64F_M(rm);
@@ -135,7 +140,7 @@ static void emit_lso(ASMState *as, A64Ins ai, Reg rd, Reg rn, int64_t ofs)
     } else {
       goto nopair;
     }
-    if (ofsm >= (-64<<sc) && ofsm <= (63<<sc)) {
+    if (ofsm >= (int)((unsigned int)-64<<sc) && ofsm <= (63<<sc)) {
       *as->mcp = aip | A64F_N(rn) | ((ofsm >> sc) << 15) |
 	(ai ^ ((ai == A64I_LDRx || ai == A64I_STRx) ? 0x50000000 : 0x90000000));
       return;
@@ -234,7 +239,7 @@ static void emit_loadk(ASMState *as, Reg rd, uint64_t u64, int is64)
 #define glofs(as, k) \
   ((intptr_t)((uintptr_t)(k) - (uintptr_t)&J2GG(as->J)->g))
 #define mcpofs(as, k) \
-  ((intptr_t)((uintptr_t)(k) - (uintptr_t)as->mcp))
+  ((intptr_t)((uintptr_t)(k) - (uintptr_t)(as->mcp - 1)))
 #define checkmcpofs(as, k) \
   ((((mcpofs(as, k)>>2) + 0x00040000) >> 19) == 0)
 
@@ -305,39 +310,35 @@ typedef MCode *MCLabel;
 
 static void emit_cond_branch(ASMState *as, A64CC cond, MCode *target)
 {
-  MCode *p = as->mcp;
-  ptrdiff_t delta = target - (p - 1);
+  MCode *p = --as->mcp;
+  ptrdiff_t delta = target - p;
   lua_assert(((delta + 0x40000) >> 19) == 0);
-  *--p = A64I_BCC | A64F_S19((uint32_t)delta & 0x7ffff) | cond;
-  as->mcp = p;
+  *p = A64I_BCC | A64F_S19(delta) | cond;
 }
 
 static void emit_branch(ASMState *as, A64Ins ai, MCode *target)
 {
-  MCode *p = as->mcp;
-  ptrdiff_t delta = target - (p - 1);
+  MCode *p = --as->mcp;
+  ptrdiff_t delta = target - p;
   lua_assert(((delta + 0x02000000) >> 26) == 0);
-  *--p = ai | ((uint32_t)delta & 0x03ffffffu);
-  as->mcp = p;
+  *p = ai | ((uint32_t)delta & 0x03ffffffu);
 }
 
 static void emit_tnb(ASMState *as, A64Ins ai, Reg r, uint32_t bit, MCode *target)
 {
-  MCode *p = as->mcp;
-  ptrdiff_t delta = target - (p - 1);
+  MCode *p = --as->mcp;
+  ptrdiff_t delta = target - p;
   lua_assert(bit < 63 && ((delta + 0x2000) >> 14) == 0);
   if (bit > 31) ai |= A64I_X;
-  *--p = ai | A64F_BIT(bit & 31) | A64F_S14((uint32_t)delta & 0x3fffu) | r;
-  as->mcp = p;
+  *p = ai | A64F_BIT(bit & 31) | A64F_S14((uint32_t)delta & 0x3fffu) | r;
 }
 
 static void emit_cnb(ASMState *as, A64Ins ai, Reg r, MCode *target)
 {
-  MCode *p = as->mcp;
-  ptrdiff_t delta = target - (p - 1);
+  MCode *p = --as->mcp;
+  ptrdiff_t delta = target - p;
   lua_assert(((delta + 0x40000) >> 19) == 0);
-  *--p = ai | A64F_S19((uint32_t)delta & 0x7ffff) | r;
-  as->mcp = p;
+  *p = ai | A64F_S19(delta) | r;
 }
 
 #define emit_jmp(as, target)	emit_branch(as, A64I_B, (target))

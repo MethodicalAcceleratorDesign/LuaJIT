@@ -1,6 +1,6 @@
 /*
 ** x86/x64 IR assembler (SSA IR -> machine code).
-** Copyright (C) 2005-2016 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
 */
 
 /* -- Guard handling ------------------------------------------------------ */
@@ -1065,7 +1065,8 @@ static void asm_tvptr(ASMState *as, Reg dest, IRRef ref)
 	emit_u32(as, irt_toitype(ir->t) << 15);
 	emit_rmro(as, XO_ARITHi, XOg_OR, dest, 4);
       } else {
-	emit_movmroi(as, dest, 4, (irt_toitype(ir->t) << 15) | 0x7fff);
+	/* Currently, no caller passes integers that might end up here. */
+	emit_movmroi(as, dest, 4, (irt_toitype(ir->t) << 15));
       }
       emit_movtomro(as, REX_64IR(ir, src), dest, 0);
     }
@@ -1790,8 +1791,9 @@ static void asm_cnew(ASMState *as, IRIns *ir)
     Reg r64 = sz == 8 ? REX_64 : 0;
     if (irref_isk(ir->op2)) {
       IRIns *irk = IR(ir->op2);
-      uint64_t k = irk->o == IR_KINT64 ? ir_k64(irk)->u64 :
-					 (uint64_t)(uint32_t)irk->i;
+      uint64_t k = (irk->o == IR_KINT64 ||
+		    (LJ_GC64 && (irk->o == IR_KPTR || irk->o == IR_KKPTR))) ?
+		   ir_k64(irk)->u64 : (uint64_t)(uint32_t)irk->i;
       if (sz == 4 || checki32((int64_t)k)) {
 	emit_i32(as, (int32_t)k);
 	emit_rmro(as, XO_MOVmi, r64, RID_RET, sizeof(GCcdata));

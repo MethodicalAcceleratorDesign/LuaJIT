@@ -1,7 +1,7 @@
 ----------------------------------------------------------------------------
 -- LuaJIT ARM64 disassembler module.
 --
--- Copyright (C) 2005-2016 Mike Pall. All rights reserved.
+-- Copyright (C) 2005-2017 Mike Pall. All rights reserved.
 -- Released under the MIT license. See Copyright Notice in luajit.h
 --
 -- Contributed by Djordje Kovacevic and Stefan Pejic from RT-RK.com.
@@ -13,10 +13,9 @@
 -- NYI: Advanced SIMD and VFP instructions.
 ------------------------------------------------------------------------------
 
-local type, tonumber = type, tonumber
+local type = type
 local sub, byte, format = string.sub, string.byte, string.format
 local match, gmatch, gsub = string.match, string.gmatch, string.gsub
-local rep = string.rep
 local concat = table.concat
 local bit = require("bit")
 local band, bor, bxor, tohex = bit.band, bit.bor, bit.bxor, bit.tohex
@@ -411,15 +410,19 @@ local map_lsriro = {
       shift = 26, mask = 1,
       [0] = {
 	shift = 30, mask = 3,
-	[1] = {
+	[0] = {
 	  shift = 22, mask = 3,
-	  [0] = "strhDwO", "ldrhDwO", "ldrshDwO", "ldrshDxO"
+	  [0] = "strbDwO", "ldrbDwO", "ldrsbDxO", "ldrsbDwO"
 	},
-	[2] = {
+	{
+	  shift = 22, mask = 3,
+	  [0] = "strhDwO", "ldrhDwO", "ldrshDxO", "ldrshDwO"
+	},
+	{
 	  shift = 22, mask = 3,
 	  [0] = "strDwO", "ldrDwO", "ldrswDxO"
 	},
-	[3] = {
+	{
 	  shift = 22, mask = 3,
 	  [0] = "strDxO", "ldrDxO"
 	}
@@ -860,7 +863,6 @@ local function disass_ins(ctx)
   local operands = {}
   local suffix = ""
   local last, name, pat
-  local vr
   local map_reg
   ctx.op = op
   ctx.rel = nil
@@ -982,7 +984,7 @@ local function disass_ins(ctx)
       local sz = band(rshift(op, 30), 3)
       -- extension to be applied
       if opt == 3 then
-       if s == 0 then x = nil
+       if s == 0 then x = x.."]"
        else x = x..", lsl #"..sz.."]" end
       elseif opt == 2 or opt == 6 or opt == 7 then
 	if s == 0 then x = x..", "..map_extend[opt].."]"
@@ -1010,7 +1012,6 @@ local function disass_ins(ctx)
     elseif p == "I" then
       local shf = band(rshift(op, 22), 3)
       local imm12 = band(rshift(op, 10), 0x0fff)
-      local n = #operands
       local rn, rd = band(rshift(op, 5), 31), band(op, 31)
       if altname == "mov" and shf == 0 and imm12 == 0 and (rn == 31 or rd == 31) then
 	name = altname

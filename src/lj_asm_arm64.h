@@ -1,6 +1,6 @@
 /*
 ** ARM64 IR assembler (SSA IR -> machine code).
-** Copyright (C) 2005-2016 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
 **
 ** Contributed by Djordje Kovacevic and Stefan Pejic from RT-RK.com.
 ** Sponsored by Cisco Systems, Inc.
@@ -56,11 +56,11 @@ static void asm_exitstub_setup(ASMState *as, ExitNo nexits)
     asm_mclimit(as);
   /* 1: str lr,[sp]; bl ->vm_exit_handler; movz w0,traceno; bl <1; bl <1; ... */
   for (i = nexits-1; (int32_t)i >= 0; i--)
-    *--mxp = A64I_BL|((-3-i)&0x03ffffffu);
-  *--mxp = A64I_MOVZw|A64F_U16(as->T->traceno);
+    *--mxp = A64I_LE(A64I_BL|((-3-i)&0x03ffffffu));
+  *--mxp = A64I_LE(A64I_MOVZw|A64F_U16(as->T->traceno));
   mxp--;
-  *mxp = A64I_BL|(((MCode *)(void *)lj_vm_exit_handler-mxp)&0x03ffffffu);
-  *--mxp = A64I_STRx|A64F_D(RID_LR)|A64F_N(RID_SP);
+  *mxp = A64I_LE(A64I_BL|(((MCode *)(void *)lj_vm_exit_handler-mxp)&0x03ffffffu));
+  *--mxp = A64I_LE(A64I_STRx|A64F_D(RID_LR)|A64F_N(RID_SP));
   as->mctop = mxp;
 }
 
@@ -176,7 +176,7 @@ static Reg asm_fuseahuref(ASMState *as, IRRef ref, int32_t *ofsp, RegSet allow,
 	  }
 	} else {
 	  Reg base = ra_alloc1(as, ir->op1, allow);
-	  *ofsp = FUSE_REG|ra_alloc1(as, ir->op2, rset_exclude(RSET_GPR, base));
+	  *ofsp = FUSE_REG|ra_alloc1(as, ir->op2, rset_exclude(allow, base));
 	  return base;
 	}
       }
@@ -232,7 +232,7 @@ static uint32_t asm_fuseopm(ASMState *as, A64Ins ai, IRRef ref, RegSet allow)
 	  irl->o == IR_CONV &&
 	  irl->op2 == ((IRT_I64<<IRCONV_DSH)|IRT_INT|IRCONV_SEXT) &&
 	  shift <= 4 &&
-	  mayfuse(as, ir->op1)) {
+	  canfuse(as, irl)) {
 	Reg m = ra_alloc1(as, irl->op1, allow);
 	return A64F_M(m) | A64F_EXSH(A64EX_SXTW, shift);
       } else {
@@ -257,19 +257,60 @@ static void asm_fusexref(ASMState *as, A64Ins ai, Reg rd, IRRef ref,
   int32_t ofs = 0;
   if (ra_noreg(ir->r) && canfuse(as, ir)) {
     if (ir->o == IR_ADD) {
-      if (asm_isk32(as, ir->op2, &ofs) && emit_checkofs(ai, ofs))
+      if (asm_isk32(as, ir->op2, &ofs) && emit_checkofs(ai, ofs)) {
 	ref = ir->op1;
-      /* NYI: Fuse add with two registers. */
+      } else {
+	Reg rn, rm;
+	IRRef lref = ir->op1, rref = ir->op2;
+	IRIns *irl = IR(lref);
+	if (mayfuse(as, irl->op1)) {
+	  unsigned int shift = 4;
+	  if (irl->o == IR_BSHL && irref_isk(irl->op2)) {
+	    shift = (IR(irl->op2)->i & 63);
+	  } else if (irl->o == IR_ADD && irl->op1 == irl->op2) {
+	    shift = 1;
+	  }
+	  if ((ai >> 30) == shift) {
+	    lref = irl->op1;
+	    irl = IR(lref);
+	    ai |= A64I_LS_SH;
+	  }
+	}
+	if (irl->o == IR_CONV &&
+	    irl->op2 == ((IRT_I64<<IRCONV_DSH)|IRT_INT|IRCONV_SEXT) &&
+	    canfuse(as, irl)) {
+	  lref = irl->op1;
+	  ai |= A64I_LS_SXTWx;
+	} else {
+	  ai |= A64I_LS_LSLx;
+	}
+	rm = ra_alloc1(as, lref, allow);
+	rn = ra_alloc1(as, rref, rset_exclude(allow, rm));
+	emit_dnm(as, (ai^A64I_LS_R), (rd & 31), rn, rm);
+	return;
+      }
     } else if (ir->o == IR_STRREF) {
       if (asm_isk32(as, ir->op2, &ofs)) {
 	ref = ir->op1;
       } else if (asm_isk32(as, ir->op1, &ofs)) {
 	ref = ir->op2;
       } else {
-	/* NYI: Fuse ADD with constant. */
 	Reg rn = ra_alloc1(as, ir->op1, allow);
-	uint32_t m = asm_fuseopm(as, 0, ir->op2, rset_exclude(allow, rn));
-	emit_lso(as, ai, rd, rd, sizeof(GCstr));
+	IRIns *irr = IR(ir->op2);
+	uint32_t m;
+	if (irr+1 == ir && !ra_used(irr) &&
+	    irr->o == IR_ADD && irref_isk(irr->op2)) {
+	  ofs = sizeof(GCstr) + IR(irr->op2)->i;
+	  if (emit_checkofs(ai, ofs)) {
+	    Reg rm = ra_alloc1(as, irr->op1, rset_exclude(allow, rn));
+	    m = A64F_M(rm) | A64F_EX(A64EX_SXTW);
+	    goto skipopm;
+	  }
+	}
+	m = asm_fuseopm(as, 0, ir->op2, rset_exclude(allow, rn));
+	ofs = sizeof(GCstr);
+      skipopm:
+	emit_lso(as, ai, rd, rd, ofs);
 	emit_dn(as, A64I_ADDx^m, rd, rn);
 	return;
       }
@@ -277,13 +318,93 @@ static void asm_fusexref(ASMState *as, A64Ins ai, Reg rd, IRRef ref,
       if (!emit_checkofs(ai, ofs)) {
 	Reg rn = ra_alloc1(as, ref, allow);
 	Reg rm = ra_allock(as, ofs, rset_exclude(allow, rn));
-	emit_dnm(as, (ai ^ 0x01204800), rd, rn, rm);
+	emit_dnm(as, (ai^A64I_LS_R)|A64I_LS_UXTWx, rd, rn, rm);
 	return;
       }
     }
   }
   base = ra_alloc1(as, ref, allow);
   emit_lso(as, ai, (rd & 31), base, ofs);
+}
+
+/* Fuse FP multiply-add/sub. */
+static int asm_fusemadd(ASMState *as, IRIns *ir, A64Ins ai, A64Ins air)
+{
+  IRRef lref = ir->op1, rref = ir->op2;
+  IRIns *irm;
+  if (lref != rref &&
+      ((mayfuse(as, lref) && (irm = IR(lref), irm->o == IR_MUL) &&
+       ra_noreg(irm->r)) ||
+       (mayfuse(as, rref) && (irm = IR(rref), irm->o == IR_MUL) &&
+       (rref = lref, ai = air, ra_noreg(irm->r))))) {
+    Reg dest = ra_dest(as, ir, RSET_FPR);
+    Reg add = ra_hintalloc(as, rref, dest, RSET_FPR);
+    Reg left = ra_alloc2(as, irm,
+			 rset_exclude(rset_exclude(RSET_FPR, dest), add));
+    Reg right = (left >> 8); left &= 255;
+    emit_dnma(as, ai, (dest & 31), (left & 31), (right & 31), (add & 31));
+    return 1;
+  }
+  return 0;
+}
+
+/* Fuse BAND + BSHL/BSHR into UBFM. */
+static int asm_fuseandshift(ASMState *as, IRIns *ir)
+{
+  IRIns *irl = IR(ir->op1);
+  lua_assert(ir->o == IR_BAND);
+  if (canfuse(as, irl) && irref_isk(ir->op2)) {
+    uint64_t mask = get_k64val(IR(ir->op2));
+    if (irref_isk(irl->op2) && (irl->o == IR_BSHR || irl->o == IR_BSHL)) {
+      int32_t shmask = irt_is64(irl->t) ? 63 : 31;
+      int32_t shift = (IR(irl->op2)->i & shmask);
+      int32_t imms = shift;
+      if (irl->o == IR_BSHL) {
+	mask >>= shift;
+	shift = (shmask-shift+1) & shmask;
+	imms = 0;
+      }
+      if (mask && !((mask+1) & mask)) {  /* Contiguous 1-bits at the bottom. */
+	Reg dest = ra_dest(as, ir, RSET_GPR);
+	Reg left = ra_alloc1(as, irl->op1, RSET_GPR);
+	A64Ins ai = shmask == 63 ? A64I_UBFMx : A64I_UBFMw;
+	imms += 63 - emit_clz64(mask);
+	if (imms > shmask) imms = shmask;
+	emit_dn(as, ai | A64F_IMMS(imms) | A64F_IMMR(shift), dest, left);
+	return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+/* Fuse BOR(BSHL, BSHR) into EXTR/ROR. */
+static int asm_fuseorshift(ASMState *as, IRIns *ir)
+{
+  IRIns *irl = IR(ir->op1), *irr = IR(ir->op2);
+  lua_assert(ir->o == IR_BOR);
+  if (canfuse(as, irl) && canfuse(as, irr) &&
+      ((irl->o == IR_BSHR && irr->o == IR_BSHL) ||
+       (irl->o == IR_BSHL && irr->o == IR_BSHR))) {
+    if (irref_isk(irl->op2) && irref_isk(irr->op2)) {
+      IRRef lref = irl->op1, rref = irr->op1;
+      uint32_t lshift = IR(irl->op2)->i, rshift = IR(irr->op2)->i;
+      if (irl->o == IR_BSHR) {  /* BSHR needs to be the right operand. */
+	uint32_t tmp2;
+	IRRef tmp1 = lref; lref = rref; rref = tmp1;
+	tmp2 = lshift; lshift = rshift; rshift = tmp2;
+      }
+      if (rshift + lshift == (irt_is64(ir->t) ? 64 : 32)) {
+	A64Ins ai = irt_is64(ir->t) ? A64I_EXTRx : A64I_EXTRw;
+	Reg dest = ra_dest(as, ir, RSET_GPR);
+	Reg left = ra_alloc1(as, lref, RSET_GPR);
+	Reg right = ra_alloc1(as, rref, rset_exclude(RSET_GPR, left));
+	emit_dnm(as, ai | A64F_IMMS(rshift), dest, left, right);
+	return 1;
+      }
+    }
+  }
+  return 0;
 }
 
 /* -- Calls --------------------------------------------------------------- */
@@ -310,7 +431,7 @@ static void asm_gencall(ASMState *as, const CCallInfo *ci, IRRef *args)
 	  fpr++;
 	} else {
 	  Reg r = ra_alloc1(as, ref, RSET_FPR);
-	  emit_spstore(as, ir, r, ofs);
+	  emit_spstore(as, ir, r, ofs + ((LJ_BE && !irt_isnum(ir->t)) ? 4 : 0));
 	  ofs += 8;
 	}
       } else {
@@ -320,7 +441,7 @@ static void asm_gencall(ASMState *as, const CCallInfo *ci, IRRef *args)
 	  gpr++;
 	} else {
 	  Reg r = ra_alloc1(as, ref, RSET_GPR);
-	  emit_spstore(as, ir, r, ofs);
+	  emit_spstore(as, ir, r, ofs + ((LJ_BE && !irt_is64(ir->t)) ? 4 : 0));
 	  ofs += 8;
 	}
       }
@@ -522,6 +643,31 @@ static void asm_strto(ASMState *as, IRIns *ir)
 
 /* -- Memory references --------------------------------------------------- */
 
+/* Store tagged value for ref at base+ofs. */
+static void asm_tvstore64(ASMState *as, Reg base, int32_t ofs, IRRef ref)
+{
+  RegSet allow = rset_exclude(RSET_GPR, base);
+  IRIns *ir = IR(ref);
+  lua_assert(irt_ispri(ir->t) || irt_isaddr(ir->t) || irt_isinteger(ir->t));
+  if (irref_isk(ref)) {
+    TValue k;
+    lj_ir_kvalue(as->J->L, &k, ir);
+    emit_lso(as, A64I_STRx, ra_allock(as, k.u64, allow), base, ofs);
+  } else {
+    Reg src = ra_alloc1(as, ref, allow);
+    rset_clear(allow, src);
+    if (irt_isinteger(ir->t)) {
+      Reg type = ra_allock(as, (int64_t)irt_toitype(ir->t) << 47, allow);
+      emit_lso(as, A64I_STRx, RID_TMP, base, ofs);
+      emit_dnm(as, A64I_ADDx | A64F_EX(A64EX_UXTW), RID_TMP, type, src);
+    } else {
+      Reg type = ra_allock(as, (int32_t)irt_toitype(ir->t), allow);
+      emit_lso(as, A64I_STRx, RID_TMP, base, ofs);
+      emit_dnm(as, A64I_ADDx | A64F_SH(A64SH_LSL, 47), RID_TMP, src, type);
+    }
+  }
+}
+
 /* Get pointer to TValue. */
 static void asm_tvptr(ASMState *as, Reg dest, IRRef ref)
 {
@@ -536,30 +682,7 @@ static void asm_tvptr(ASMState *as, Reg dest, IRRef ref)
     }
   } else {
     /* Otherwise use g->tmptv to hold the TValue. */
-    RegSet allow = rset_exclude(RSET_GPR, dest);
-    Reg src;
-    if (irref_isk(ref)) {
-      TValue k;
-      lj_ir_kvalue(as->J->L, &k, ir);
-      src = ra_allock(as, k.u64, allow);
-      emit_lso(as, A64I_STRx, src, dest, 0);
-    } else {
-      Reg type;
-      if (irt_ispri(ir->t)) {
-	src = ra_allock(as, ~((int64_t)~irt_toitype(ir->t) << 47), allow);
-	emit_lso(as, A64I_STRx, src, dest, 0);
-      } else if (irt_isint(ir->t)) {
-	src = ra_alloc1(as, ref, allow);
-	type = ra_allock(as, (int64_t)irt_toitype(ir->t) << 47, allow);
-	emit_lso(as, A64I_STRx, RID_TMP, dest, 0);
-	emit_dnm(as, A64I_ADDx | A64F_EX(A64EX_UXTW), RID_TMP, type, src);
-      } else {
-	src = ra_alloc1(as, ref, allow);
-	type = ra_allock(as, (int32_t)irt_toitype(ir->t), allow);
-	emit_lso(as, A64I_STRx, RID_TMP, dest, 0);
-	emit_dnm(as, A64I_ADDx | A64F_SH(A64SH_LSL, 47), RID_TMP, src, type);
-      }
-    }
+    asm_tvstore64(as, dest, 0, ref);
     ra_allockreg(as, i64ptr(&J2G(as->J)->tmptv), dest);
   }
 }
@@ -689,7 +812,7 @@ static void asm_href(ASMState *as, IRIns *ir, IROp merge)
     emit_lso(as, A64I_LDRx, scr, dest, offsetof(Node, key));
   }
 
-  *l_loop = A64I_BCC | A64F_S19((as->mcp-l_loop) & 0x0007ffffu) | CC_NE;
+  *l_loop = A64I_BCC | A64F_S19(as->mcp - l_loop) | CC_NE;
   if (!isk && irt_isaddr(kt)) {
     Reg type = ra_allock(as, (int32_t)irt_toitype(kt), allow);
     emit_dnm(as, A64I_ADDx | A64F_SH(A64SH_LSL, 47), tmp, key, type);
@@ -936,7 +1059,7 @@ static void asm_ahuvload(ASMState *as, IRIns *ir)
 	    ra_allock(as, (irt_toitype(ir->t) << 15) | 0x7fff, allow), tmp);
   }
   if (ofs & FUSE_REG)
-    emit_dnm(as, (A64I_LDRx^A64I_LS_R)|A64I_LS_UXTWx, tmp, idx, (ofs & 31));
+    emit_dnm(as, (A64I_LDRx^A64I_LS_R)|A64I_LS_UXTWx|A64I_LS_SH, tmp, idx, (ofs & 31));
   else
     emit_lso(as, A64I_LDRx, tmp, idx, ofs);
 }
@@ -951,7 +1074,7 @@ static void asm_ahustore(ASMState *as, IRIns *ir)
       src = ra_alloc1(as, ir->op2, RSET_FPR);
       idx = asm_fuseahuref(as, ir->op1, &ofs, allow, A64I_STRd);
       if (ofs & FUSE_REG)
-	emit_dnm(as, (A64I_STRd^A64I_LS_R)|A64I_LS_UXTWx, (src & 31), idx, (ofs &31));
+	emit_dnm(as, (A64I_STRd^A64I_LS_R)|A64I_LS_UXTWx|A64I_LS_SH, (src & 31), idx, (ofs &31));
       else
 	emit_lso(as, A64I_STRd, (src & 31), idx, ofs);
     } else {
@@ -959,7 +1082,7 @@ static void asm_ahustore(ASMState *as, IRIns *ir)
 	src = ra_alloc1(as, ir->op2, allow);
 	rset_clear(allow, src);
 	if (irt_isinteger(ir->t))
-	  type = ra_allock(as, (int64_t)LJ_TISNUM << 47, allow);
+	  type = ra_allock(as, (uint64_t)(int32_t)LJ_TISNUM << 47, allow);
 	else
 	  type = ra_allock(as, irt_toitype(ir->t), allow);
       } else {
@@ -968,7 +1091,7 @@ static void asm_ahustore(ASMState *as, IRIns *ir)
       idx = asm_fuseahuref(as, ir->op1, &ofs, rset_exclude(allow, type),
 			   A64I_STRx);
       if (ofs & FUSE_REG)
-	emit_dnm(as, (A64I_STRx^A64I_LS_R)|A64I_LS_UXTWx, tmp, idx, (ofs & 31));
+	emit_dnm(as, (A64I_STRx^A64I_LS_R)|A64I_LS_UXTWx|A64I_LS_SH, tmp, idx, (ofs & 31));
       else
 	emit_lso(as, A64I_STRx, tmp, idx, ofs);
       if (ra_hasreg(src)) {
@@ -1056,7 +1179,8 @@ dotypecheck:
   }
   if (ra_hasreg(dest)) {
     emit_lso(as, irt_isnum(t) ? A64I_LDRd :
-	     (irt_isint(t) ? A64I_LDRw : A64I_LDRx), (dest & 31), base, ofs);
+	     (irt_isint(t) ? A64I_LDRw : A64I_LDRx), (dest & 31), base,
+	     ofs ^ ((LJ_BE && irt_isint(t) ? 4 : 0)));
   }
 }
 
@@ -1267,7 +1391,8 @@ static void asm_intmul(ASMState *as, IRIns *ir)
 static void asm_add(ASMState *as, IRIns *ir)
 {
   if (irt_isnum(ir->t)) {
-    asm_fparith(as, ir, A64I_FADDd);
+    if (!asm_fusemadd(as, ir, A64I_FMADDd, A64I_FMADDd))
+      asm_fparith(as, ir, A64I_FADDd);
     return;
   }
   asm_intop_s(as, ir, A64I_ADDw);
@@ -1276,7 +1401,8 @@ static void asm_add(ASMState *as, IRIns *ir)
 static void asm_sub(ASMState *as, IRIns *ir)
 {
   if (irt_isnum(ir->t)) {
-    asm_fparith(as, ir, A64I_FSUBd);
+    if (!asm_fusemadd(as, ir, A64I_FNMSUBd, A64I_FMSUBd))
+      asm_fparith(as, ir, A64I_FSUBd);
     return;
   }
   asm_intop_s(as, ir, A64I_SUBw);
@@ -1341,28 +1467,58 @@ static void asm_neg(ASMState *as, IRIns *ir)
   asm_intneg(as, ir);
 }
 
-static void asm_bitop(ASMState *as, IRIns *ir, A64Ins ai)
+static void asm_band(ASMState *as, IRIns *ir)
 {
-  if (as->flagmcp == as->mcp && ai == A64I_ANDw) {
+  A64Ins ai = A64I_ANDw;
+  if (asm_fuseandshift(as, ir))
+    return;
+  if (as->flagmcp == as->mcp) {
     /* Try to drop cmp r, #0. */
     as->flagmcp = NULL;
     as->mcp++;
-    ai += A64I_ANDSw - A64I_ANDw;
+    ai = A64I_ANDSw;
   }
-  if (ir->op2 == 0) {
-    Reg dest = ra_dest(as, ir, RSET_GPR);
-    uint32_t m = asm_fuseopm(as, ai, ir->op1, RSET_GPR);
+  asm_intop(as, ir, ai);
+}
+
+static void asm_borbxor(ASMState *as, IRIns *ir, A64Ins ai)
+{
+  IRRef lref = ir->op1, rref = ir->op2;
+  IRIns *irl = IR(lref), *irr = IR(rref);
+  if ((canfuse(as, irl) && irl->o == IR_BNOT && !irref_isk(rref)) ||
+      (canfuse(as, irr) && irr->o == IR_BNOT && !irref_isk(lref))) {
+    Reg left, dest = ra_dest(as, ir, RSET_GPR);
+    uint32_t m;
+    if (irl->o == IR_BNOT) {
+      IRRef tmp = lref; lref = rref; rref = tmp;
+    }
+    left = ra_alloc1(as, lref, RSET_GPR);
+    ai |= A64I_ON;
     if (irt_is64(ir->t)) ai |= A64I_X;
-    emit_d(as, ai^m, dest);
+    m = asm_fuseopm(as, ai, IR(rref)->op1, rset_exclude(RSET_GPR, left));
+    emit_dn(as, ai^m, dest, left);
   } else {
     asm_intop(as, ir, ai);
   }
 }
 
-#define asm_bnot(as, ir)	asm_bitop(as, ir, A64I_MVNw)
-#define asm_band(as, ir)	asm_bitop(as, ir, A64I_ANDw)
-#define asm_bor(as, ir)		asm_bitop(as, ir, A64I_ORRw)
-#define asm_bxor(as, ir)	asm_bitop(as, ir, A64I_EORw)
+static void asm_bor(ASMState *as, IRIns *ir)
+{
+  if (asm_fuseorshift(as, ir))
+    return;
+  asm_borbxor(as, ir, A64I_ORRw);
+}
+
+#define asm_bxor(as, ir)	asm_borbxor(as, ir, A64I_EORw)
+
+static void asm_bnot(ASMState *as, IRIns *ir)
+{
+  A64Ins ai = A64I_MVNw;
+  Reg dest = ra_dest(as, ir, RSET_GPR);
+  uint32_t m = asm_fuseopm(as, ai, ir->op1, RSET_GPR);
+  if (irt_is64(ir->t)) ai |= A64I_X;
+  emit_d(as, ai^m, dest);
+}
 
 static void asm_bswap(ASMState *as, IRIns *ir)
 {
@@ -1373,16 +1529,28 @@ static void asm_bswap(ASMState *as, IRIns *ir)
 
 static void asm_bitshift(ASMState *as, IRIns *ir, A64Ins ai, A64Shift sh)
 {
-  int shmask = irt_is64(ir->t) ? 63 : 31;
+  int32_t shmask = irt_is64(ir->t) ? 63 : 31;
   if (irref_isk(ir->op2)) {  /* Constant shifts. */
-    Reg dest = ra_dest(as, ir, RSET_GPR);
-    Reg left = ra_alloc1(as, ir->op1, RSET_GPR);
+    Reg left, dest = ra_dest(as, ir, RSET_GPR);
     int32_t shift = (IR(ir->op2)->i & shmask);
-
+    IRIns *irl = IR(ir->op1);
     if (shmask == 63) ai += A64I_UBFMx - A64I_UBFMw;
+
+    /* Fuse BSHL + BSHR/BSAR into UBFM/SBFM aka UBFX/SBFX/UBFIZ/SBFIZ. */
+    if ((sh == A64SH_LSR || sh == A64SH_ASR) && canfuse(as, irl)) {
+      if (irl->o == IR_BSHL && irref_isk(irl->op2)) {
+	int32_t shift2 = (IR(irl->op2)->i & shmask);
+	shift = ((shift - shift2) & shmask);
+	shmask -= shift2;
+	ir = irl;
+      }
+    }
+
+    left = ra_alloc1(as, ir->op1, RSET_GPR);
     switch (sh) {
     case A64SH_LSL:
-      emit_dn(as, ai | A64F_IMMS(shmask-shift) | A64F_IMMR(shmask-shift+1), dest, left);
+      emit_dn(as, ai | A64F_IMMS(shmask-shift) |
+		  A64F_IMMR((shmask-shift+1)&shmask), dest, left);
       break;
     case A64SH_LSR: case A64SH_ASR:
       emit_dn(as, ai | A64F_IMMS(shmask) | A64F_IMMR(shift), dest, left);
@@ -1631,31 +1799,7 @@ static void asm_stack_restore(ASMState *as, SnapShot *snap)
       Reg src = ra_alloc1(as, ref, RSET_FPR);
       emit_lso(as, A64I_STRd, (src & 31), RID_BASE, ofs);
     } else {
-      RegSet allow = rset_exclude(RSET_GPR, RID_BASE);
-      lua_assert(irt_ispri(ir->t) || irt_isaddr(ir->t) || irt_isinteger(ir->t));
-      if (!irref_isk(ref)) {
-	Reg type, src;
-	if (irt_is64(ir->t)) {
-	  type = ra_allock(as, (int32_t)irt_toitype(ir->t), allow);
-	  src = ra_alloc1(as, ref, rset_exclude(allow, type));
-	  emit_lso(as, A64I_STRx, RID_TMP, RID_BASE, ofs);
-	  emit_dnm(as, A64I_ADDx | A64F_SH(A64SH_LSL, 47), RID_TMP, src, type);
-	} else if (irt_isinteger(ir->t)) {
-	  type = ra_allock(as, (int64_t)LJ_TISNUM << 47, allow);
-	  src = ra_alloc1(as, ref, rset_exclude(allow, type));
-	  emit_lso(as, A64I_STRx, RID_TMP, RID_BASE, ofs);
-	  emit_dnm(as, A64I_ADDx | A64F_EX(A64EX_UXTW), RID_TMP, type, src);
-	} else {
-	  type = ra_allock(as, ~((int64_t)~irt_toitype(ir->t) << 47), allow);
-	  emit_lso(as, A64I_STRx, type, RID_BASE, ofs);
-	}
-      } else {
-	TValue k;
-	lj_ir_kvalue(as->J->L, &k, ir);
-	emit_lso(as, A64I_STRx,
-		 ra_allock(as, tvisnil(&k) ? -1 : (int64_t)k.u64, allow),
-		 RID_BASE, ofs);
-      }
+      asm_tvstore64(as, RID_BASE, ofs, ref);
     }
     checkmclim(as);
   }
@@ -1766,7 +1910,7 @@ static void asm_tail_fixup(ASMState *as, TraceNo lnk)
   /* Undo the sp adjustment in BC_JLOOP when exiting to the interpreter. */
   int32_t spadj = as->T->spadjust + (lnk ? 0 : sps_scale(SPS_FIXED));
   if (spadj == 0) {
-    *--p = A64I_NOP;
+    *--p = A64I_LE(A64I_NOP);
     as->mctop = p;
   } else {
     /* Patch stack adjustment. */
@@ -1819,6 +1963,19 @@ static void asm_setup_target(ASMState *as)
   asm_exitstub_setup(as, as->T->nsnap + (as->parent ? 1 : 0));
 }
 
+#if LJ_BE
+/* ARM64 instructions are always little-endian. Swap for ARM64BE. */
+static void asm_mcode_fixup(MCode *mcode, MSize size)
+{
+  MCode *pe = (MCode *)((char *)mcode + size);
+  while (mcode < pe) {
+    MCode ins = *mcode;
+    *mcode++ = lj_bswap(ins);
+  }
+}
+#define LJ_TARGET_MCODE_FIXUP	1
+#endif
+
 /* -- Trace patching ------------------------------------------------------ */
 
 /* Patch exit jumps of existing machine code to a new target. */
@@ -1831,29 +1988,29 @@ void lj_asm_patchexit(jit_State *J, GCtrace *T, ExitNo exitno, MCode *target)
   MCode *px = exitstub_trace_addr(T, exitno);
   for (; p < pe; p++) {
     /* Look for exitstub branch, replace with branch to target. */
-    uint32_t ins = *p;
+    MCode ins = A64I_LE(*p);
     if ((ins & 0xff000000u) == 0x54000000u &&
 	((ins ^ ((px-p)<<5)) & 0x00ffffe0u) == 0) {
       /* Patch bcc exitstub. */
-      *p = (ins & 0xff00001fu) | (((target-p)<<5) & 0x00ffffe0u);
+      *p = A64I_LE((ins & 0xff00001fu) | (((target-p)<<5) & 0x00ffffe0u));
       cend = p+1;
       if (!cstart) cstart = p;
     } else if ((ins & 0xfc000000u) == 0x14000000u &&
 	       ((ins ^ (px-p)) & 0x03ffffffu) == 0) {
       /* Patch b exitstub. */
-      *p = (ins & 0xfc000000u) | ((target-p) & 0x03ffffffu);
+      *p = A64I_LE((ins & 0xfc000000u) | ((target-p) & 0x03ffffffu));
       cend = p+1;
       if (!cstart) cstart = p;
     } else if ((ins & 0x7e000000u) == 0x34000000u &&
 	       ((ins ^ ((px-p)<<5)) & 0x00ffffe0u) == 0) {
       /* Patch cbz/cbnz exitstub. */
-      *p = (ins & 0xff00001f) | (((target-p)<<5) & 0x00ffffe0u);
+      *p = A64I_LE((ins & 0xff00001f) | (((target-p)<<5) & 0x00ffffe0u));
       cend = p+1;
       if (!cstart) cstart = p;
     } else if ((ins & 0x7e000000u) == 0x36000000u &&
 	       ((ins ^ ((px-p)<<5)) & 0x0007ffe0u) == 0) {
       /* Patch tbz/tbnz exitstub. */
-      *p = (ins & 0xfff8001fu) | (((target-p)<<5) & 0x0007ffe0u);
+      *p = A64I_LE((ins & 0xfff8001fu) | (((target-p)<<5) & 0x0007ffe0u));
       cend = p+1;
       if (!cstart) cstart = p;
     }
