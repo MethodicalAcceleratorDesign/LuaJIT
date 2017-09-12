@@ -1890,14 +1890,16 @@ static TRef rec_cat(jit_State *J, BCReg baseslot, BCReg topslot)
   lua_assert(baseslot < topslot);
   for (s = baseslot; s <= topslot; s++)
     (void)getslot(J, s);  /* Ensure all arguments have a reference. */
-#if LJ_HASFFI && defined(LUAJIT_CTYPE_XRANGE)              /* LD: 2016.05.14 */
+#if LJ_HASFFI && defined(LJMAD_RANGE_SYNTAX)               /* LD: 2016.05.14 */
   if (tref_isnumber (top[0]) && tref_isnumber (top[-1])) {
+    extern CTypeID ljmad_range_id;
+    lua_assert(ljmad_range_id != 0);
     /* Convert 2-3 concatenated numbers into a xrange, see also lj_meta_cat. */
     TRef dp, tr, *base = &J->base[baseslot];
     const int has_step = top-2 >= base && tref_isnumber(top[-2]);
     const int esz = sizeof(double);
     /* Allocate cdata xrange. */
-    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, CTID_XRANGE), TREF_NIL);
+    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J,ljmad_range_id), TREF_NIL);
     /* First convert integers to numbers. */
     top = has_step ? top-2 : top-1;
     if (tref_isinteger(top[0])) top[0]=emitir(IRTN(IR_CONV), top[0], IRCONV_NUM_INT);

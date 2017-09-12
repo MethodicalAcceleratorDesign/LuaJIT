@@ -53,12 +53,6 @@ static LJ_NOINLINE LexChar lex_more(LexState *ls)
   return (LexChar)(uint8_t)p[0];
 }
 
-/* Check next character. */
-static LJ_AINLINE LexChar lex_lookahead(LexState *ls)      /* LD: 2016.05.02 */
-{                                   /* --ls->p is always valid, see lex_more */
-  return (LexChar)(uint8_t)*(ls->p < ls->pe ? ls->p : (lex_more(ls), --ls->p));
-}
-
 /* Get next character. */
 static LJ_AINLINE LexChar lex_next(LexState *ls)
 {
@@ -91,6 +85,14 @@ static void lex_newline(LexState *ls)
 
 /* -- Scanner for terminals ----------------------------------------------- */
 
+#ifdef LJMAD_BUGFIX_EXTRA /* LD: 2016.05.02 */
+/* Check next character, --ls->p is always valid, see lex_more. */
+#define lex_isconcat(ls) \
+  ((LexChar)(uint8_t)*(ls->p < ls->pe ? ls->p : (lex_more(ls), --ls->p)) != '.')
+#else
+#define lex_isconcat(ls) 1
+#endif
+
 /* Parse a number literal. */
 static void lex_number(LexState *ls, TValue *tv)
 {
@@ -99,8 +101,8 @@ static void lex_number(LexState *ls, TValue *tv)
   lua_assert(lj_char_isdigit(ls->c));
   if ((c = ls->c) == '0' && (lex_savenext(ls) | 0x20) == 'x')
     xp = 'p';
-  while (lj_char_isident(ls->c) || (ls->c == '.' && lex_lookahead(ls) != '.') ||
-	 ((ls->c == '-' || ls->c == '+') && (c | 0x20) == xp)) {     /* '..' */
+  while (lj_char_isident(ls->c) || (ls->c == '.' && lex_isconcat(ls)) ||
+	 ((ls->c == '-' || ls->c == '+') && (c | 0x20) == xp)) {
     c = ls->c;
     lex_savenext(ls);
   }
@@ -323,7 +325,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
       continue;
     case '-':
       lex_next(ls);
-#ifdef LUAJIT_LAMBDA_SYNTAX                                /* LD: 2016.05.02 */
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.05.02 */
       if (ls->c == '>') { lex_next(ls); return TK_arrow; }
 #endif
       if (ls->c != '-') return '-';
@@ -337,7 +339,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
 	  continue;
 	}
       }
-#ifdef LUAJIT_COMMENT_EMARK                                /* LD: 2016.05.02 */
+#ifdef LJMAD_COMMENT_EMARK                                 /* LD: 2016.05.02 */
     case '!':
 #endif
       /* Short comment "--.*\n". */
@@ -358,7 +360,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
       }
     case '=':
       lex_next(ls);
-#ifdef LUAJIT_LAMBDA_SYNTAX                                /* LD: 2016.05.02 */
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.05.02 */
       if (ls->c == '>') { lex_next(ls); return TK_fatarrow; }
 #endif
       if (ls->c != '=') return '='; else { lex_next(ls); return TK_eq; }
@@ -373,7 +375,7 @@ static LexToken lex_scan(LexState *ls, TValue *tv)
       if (ls->c != '=') return '~'; else { lex_next(ls); return TK_ne; }
     case ':':
       lex_next(ls);
-#ifdef LUAJIT_LAMBDA_DEFER                                 /* LD: 2016.05.02 */
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.05.02 */
       if (ls->c == '=') { lex_next(ls); return TK_deferred; }
 #endif
       if (ls->c != ':') return ':'; else { lex_next(ls); return TK_label; }

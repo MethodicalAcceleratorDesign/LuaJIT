@@ -115,10 +115,6 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
       return IRT_NUM;
     else if (ct->size == 2*sizeof(float))
       return IRT_FLOAT;
-#ifdef LUAJIT_CTYPE_XRANGE				   /* LD: 2016.05.14 */
-  } else if (ctype_isxrange(ct->info)) {
-    return IRT_NUM;
-#endif
   }
   return IRT_CDATA;
 }
@@ -127,12 +123,9 @@ static IRType crec_ct2irt(CTState *cts, CType *ct)
 
 /* Maximum length and unroll of inlined copy/fill. */
 #define CREC_COPY_MAXUNROLL		16
-#define CREC_COPY_MAXLEN		512	/* LD: 2016.05.09, was 128 */
+#define CREC_COPY_MAXLEN		128
 
 #define CREC_FILL_MAXUNROLL		16
-
-/* Maximum size for sunk alloc */
-#define CREC_SINK_MAXSIZE		512	/* LD: 2016.05.09, was 128 */
 
 /* Number of windowed registers used for optimized memory copy. */
 #if LJ_TARGET_X86
@@ -176,18 +169,6 @@ static MSize crec_copy_struct(CRecMemList *ml, CTState *cts, CType *ct)
 	ml[mlp].tp = tp;
 	mlp++;
       }
-#ifdef LUAJIT_CTYPE_XRANGE				   /* LD: 2016.05.14 */
-      if (ctype_isxrange(cct->info)) {
-        if (mlp >= CREC_COPY_MAXUNROLL) return 0;
-        ml[mlp].ofs = df->size + sizeof(double);
-        ml[mlp].tp = tp;
-        mlp++;
-        if (mlp >= CREC_COPY_MAXUNROLL) return 0;
-        ml[mlp].ofs = df->size + 2*sizeof(double);
-        ml[mlp].tp = tp;
-        mlp++;
-      }
-#endif
     } else if (!ctype_isconstval(df->info)) {
       /* NYI: bitfields and sub-structures. */
       return 0;
@@ -598,31 +579,11 @@ static TRef crec_tv_ct(jit_State *J, CType *s, CTypeID sid, TRef sp)
     tr1 = emitir(IRT(IR_XLOAD, t), sp, 0);
     ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, esz));
     tr2 = emitir(IRT(IR_XLOAD, t), ptr, 0);
-
     ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
           emitir(IRT(IR_XSTORE, t), ptr, tr1);
     ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
           emitir(IRT(IR_XSTORE, t), ptr, tr2);
     return dp;
-#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
-  } else if (ctype_isxrange(sinfo)) {  /* Unbox/box xrange. */
-    ptrdiff_t esz = sizeof(double);
-    TRef ptr, tr1, tr2, tr3, dp;
-    dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J, sid), TREF_NIL);
-    tr1 = emitir(IRT(IR_XLOAD, IRT_NUM), sp, 0);
-    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, esz));
-    tr2 = emitir(IRT(IR_XLOAD, IRT_NUM), ptr, 0);
-    ptr = emitir(IRT(IR_ADD  , IRT_PTR), sp, lj_ir_kintp(J, 2*esz));
-    tr3 = emitir(IRT(IR_XLOAD, IRT_NUM), ptr, 0);
-
-    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
-          emitir(IRT(IR_XSTORE, IRT_NUM), ptr, tr1);
-    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
-          emitir(IRT(IR_XSTORE, IRT_NUM), ptr, tr2);
-    ptr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+2*esz));
-          emitir(IRT(IR_XSTORE, IRT_NUM), ptr, tr3);
-    return dp;
-#endif
   } else {
     /* NYI: copyval of vectors. */
   err_nyi:
@@ -853,8 +814,8 @@ void LJ_FASTCALL recff_cdata_index(jit_State *J, RecordFFData *rd)
 again:
   idx = J->base[1];
   if (tref_isnumber(idx)) {
-    idx = lj_opt_narrow_cindex(J, idx);                    /* LD: 2016.05.14 */
-    if (ctype_ispointer(ct->info) && !(ct->info & CTF_XRANGE)) {
+    idx = lj_opt_narrow_cindex(J, idx);
+    if (ctype_ispointer(ct->info)) {
       CTSize sz;
   integer_key:
       if ((ct->info & CTF_COMPLEX))
@@ -936,18 +897,6 @@ again:
 	if (strdata(name)[0] == 'i') ofs += (ct->size >> 1);
 	sid = ctype_cid(ct->info);
       }
-#ifdef LUAJIT_CTYPE_XRANGE                                 /* LD: 2016.05.14 */
-    } else if (ctype_isxrange(ct->info)) { /* See also lj_cdata_index */
-      if ((name->len == 5 && !memcmp(strdata(name), "start", 5)) ||
-          (name->len == 4 && !memcmp(strdata(name), "stop" , 4)) ||
-          (name->len == 4 && !memcmp(strdata(name), "step" , 4))) {
-        /* Always specialize to the field name. */
-        emitir(IRTG(IR_EQ, IRT_STR), idx, lj_ir_kstr(J, name));
-        ofs += (strdata(name)[2] == 'o') *   sizeof(double) +
-               (strdata(name)[2] == 'e') * 2*sizeof(double);
-        sid = ctype_cid(ct->info);
-      }
-#endif
     }
   }
   if (!sid) {
@@ -1035,7 +984,7 @@ static void crec_alloc(jit_State *J, RecordFFData *rd, CTypeID id)
       trsz = lj_ir_kint(J, sz);
     }
     trcd = emitir(IRTG(IR_CNEW, IRT_CDATA), trid, trsz);
-    if (sz > CREC_SINK_MAXSIZE || (info & CTF_VLA)) {	    /* LD: 2016.05.09 */
+    if (sz > 128 || (info & CTF_VLA)) {
       TRef dp;
       CTSize align;
     special:  /* Only handle bulk zero-fill for large/VLA/VLS types. */

@@ -40,6 +40,7 @@
 static lua_State *globalL = NULL;
 static const char *progname = LUA_PROGNAME;
 
+#ifdef LJMAD_BUGFIX_EXTRA
 #if defined(__MINGW32__) || defined(__MINGW64__)
 #include <sys/stat.h>
 
@@ -51,6 +52,7 @@ static int lua_stdin_is_tty(void)
   return S_ISFIFO(stats.st_mode) || isatty(0);
 }
 #endif
+#endif // LJMAD_BUGFIX_EXTRA
 
 #if !LJ_TARGET_CONSOLE
 static void lstop(lua_State *L, lua_Debug *ar)

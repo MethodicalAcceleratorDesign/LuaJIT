@@ -50,8 +50,13 @@ double lj_vm_foldarith(double x, double y, int op)
 #if LJ_HASJIT
   case IR_ATAN2 - IR_ADD: return atan2(x, y); break;
   case IR_LDEXP - IR_ADD: return ldexp(x, (int)y); break;
+#ifdef LJMAD_BUGFIX_EXTRA
   case IR_MIN - IR_ADD: return y > x || y != y ? x : y; break;
   case IR_MAX - IR_ADD: return y < x || y != y ? x : y; break;
+#else
+  case IR_MIN - IR_ADD: return x > y ? y : x; break;
+  case IR_MAX - IR_ADD: return x < y ? y : x; break;
+#endif
 #endif
   default: return x;
   }

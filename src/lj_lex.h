@@ -11,13 +11,19 @@
 #include "lj_obj.h"
 #include "lj_err.h"
 
+#ifdef LJMAD_LAMBDA_SYNTAX
+#define LJMAD_SYNTAX(...) __VA_ARGS__
+#else
+#define LJMAD_SYNTAX(...)
+#endif
+
 /* Lua lexer tokens. */
 #define TKDEF(_, __) \
   _(and) _(break) _(do) _(else) _(elseif) _(end) _(false) \
   _(for) _(function) _(goto) _(if) _(in) _(local) _(nil) _(not) _(or) \
   _(repeat) _(return) _(then) _(true) _(until) _(while) \
   __(concat, ..) __(dots, ...) __(eq, ==) __(ge, >=) __(le, <=) __(ne, ~=) \
-  __(arrow, ->) __(fatarrow, =>) __(deferred, :=) \
+  LJMAD_SYNTAX(__(arrow, ->) __(fatarrow, =>) __(deferred, :=)) \
   __(label, ::) __(number, <number>) __(name, <name>) __(string, <string>) \
   __(eof, <eof>)
 
