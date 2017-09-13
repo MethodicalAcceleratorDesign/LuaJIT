@@ -244,22 +244,22 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
   if (left < 0) { left = -left; fromc = 1; }
 #if LJ_HASFFI && defined(LJMAD_RANGE_SYNTAX)               /* LD: 2016.05.14 */
   if (tvisnumber(top) && tvisnumber(top-1)) {
-    /* Convert 2-3 concatenated numbers into a xrange, see also rec_cat. */
+    const int has_step = left > 1 && tvisnumber(top-2);
+    /* Convert 2-3 concatenated numbers into a range, see also rec_cat. */
     if (!ljmad_range_id) {
         GCstr *name = lj_str_newlit(L, "range");
         CTState *cts = ctype_cts(L);
         CType *ct;
         CTypeID id = lj_ctype_getname(cts, &ct, name, 1u<<CT_STRUCT);
-        if (!id) lj_err_callerv(L, LJ_ERR_FFI_NODECL, strdata(name));
+        if (!id) lj_err_optype(L, top-1-has_step, LJ_ERR_OPCAT);
         lua_assert(ctype_isstruct(ct->info));
         // fprintf(stderr, "**** id=%d, ctinfo=0x%x, is_struct=%d, name=%s\n",id,
         // ct->info, ctype_isstruct(ct->info), strdata(gcrefp(cts->tab[id].name,GCstr)));
         ljmad_range_id = id;
     }
-    /* Allocate cdata xrange. */
+    /* Allocate cdata struct range. */
     GCcdata *cd = lj_cdata_new(ctype_cts(L), ljmad_range_id, 3*sizeof(double));
     /* Copy start, stop[, step], default step is 1. */
-    const int has_step = left > 1 && tvisnumber(top-2);
     top = has_step ? top-2 : top-1;
     ((double *)cdataptr(cd))[0] = numV(top);
     ((double *)cdataptr(cd))[1] = numV(top+1);
