@@ -235,7 +235,9 @@ TValue *lj_meta_arith(lua_State *L, TValue *ra, cTValue *rb, cTValue *rc,
   }
 }
 
+#if LJ_HASFFI && defined(LJMAD_RANGE_SYNTAX)               /* LD: 2016.05.14 */
 CTypeID ljmad_range_id = 0;
+#endif
 
 /* Helper for CAT. Coercion, iterative concat, __concat metamethod. */
 TValue *lj_meta_cat(lua_State *L, TValue *top, int left)

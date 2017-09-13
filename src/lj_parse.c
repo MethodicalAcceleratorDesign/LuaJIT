@@ -1727,7 +1727,8 @@ static void expr_kvalue(TValue *v, ExpDesc *e)
 }
 
 /* Forward declaration. */
-static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCLine line);
+static void parse_body(LexState *ls, ExpDesc *e, int needself,
+                       LJMAD_SYNTAX(int islambda,) BCLine line);
 
 /* Parse table constructor expression. */
 static void expr_table(LexState *ls, ExpDesc *e)
@@ -1735,7 +1736,8 @@ static void expr_table(LexState *ls, ExpDesc *e)
   FuncState *fs = ls->fs;
   BCLine line = ls->linenumber;
   GCtab *t = NULL;
-  int vcall = 0, needarr = 0, fixt = 0, islambda = 0;
+  int vcall = 0, needarr = 0, fixt = 0;
+  LJMAD_SYNTAX(int islambda = 0;)                          /* LD: 2016.05.02 */
   uint32_t narr = 1;  /* First array index. */
   uint32_t nhash = 0;  /* Number of hash entries. */
   BCReg freg = fs->freereg;
@@ -1746,16 +1748,19 @@ static void expr_table(LexState *ls, ExpDesc *e)
   lex_check(ls, '{');
   while (ls->tok != '}') {
     ExpDesc key, val;
-    vcall = 0, islambda = 0;
+    vcall = 0;
+    LJMAD_SYNTAX(islambda = 0;)
     if (ls->tok == '[') {
       expr_bracket(ls, &key);  /* Already calls expr_toval. */
       if (!expr_isk(&key)) expr_index(fs, e, &key);
       if (expr_isnumk(&key) && expr_numiszero(&key)) needarr = 1; else nhash++;
-      if (lex_opt(ls, TK_deferred)) islambda = -1; else lex_check(ls, '=');
+      LJMAD_SYNTAX(if (lex_opt(ls, TK_deferred)) islambda = -1; else)
+      lex_check(ls, '=');
     } else if ((ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) &&
-	       (lj_lex_lookahead(ls) == '=' || ls->lookahead == TK_deferred)) {
+	       (lj_lex_lookahead(ls) == '=' LJMAD_SYNTAX(|| ls->lookahead == TK_deferred))) {
       expr_str(ls, &key);
-      if (lex_opt(ls, TK_deferred)) islambda = -1; else lex_check(ls, '=');
+      LJMAD_SYNTAX(if (lex_opt(ls, TK_deferred)) islambda = -1; else)
+      lex_check(ls, '=');
       nhash++;
     } else {
       expr_init(&key, VKNUM, 0);
@@ -1763,9 +1768,7 @@ static void expr_table(LexState *ls, ExpDesc *e)
       narr++;
       needarr = vcall = 1;
     }
-#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.05.02 */
-    if (islambda) parse_body(ls, &val, 0, islambda, ls->linenumber); else
-#endif
+    LJMAD_SYNTAX(if (islambda) parse_body(ls,&val,0,islambda,ls->linenumber); else)
     expr(ls, &val);
     if (expr_isk(&key) && key.k != VKNIL &&
 	(key.k == VKSTR || expr_isk_nojump(&val))) {
@@ -1840,17 +1843,24 @@ static void expr_table(LexState *ls, ExpDesc *e)
   }
 }
 
-/* Parse function parameters. */                           /* LD: 2016.04.07 */
-static BCReg parse_params(LexState *ls, int needself, int islambda)
+/* Parse function parameters. */
+static BCReg parse_params(LexState *ls, int needself LJMAD_SYNTAX(, int islambda))
 {
   FuncState *fs = ls->fs;
   BCReg nparams = 0;
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.04.07 */
   int has_param = islambda &&
                   (ls->c == '(' || ls->c == '.' || lj_char_isident(ls->c));
   lex_check(ls, islambda ? '\\' : '(');
   int has_paren = !islambda || (has_param && lex_opt(ls, '('));
   if (needself) var_new_lit(ls, nparams++, "self");
   if ((has_paren && ls->tok != ')') || (!has_paren && has_param)) {
+#else
+  lex_check(ls, '(');
+  if (needself)
+    var_new_lit(ls, nparams++, "self");
+  if (ls->tok != ')') {
+#endif
     do {
       if (ls->tok == TK_name || (!LJ_52 && ls->tok == TK_goto)) {
 	var_new(ls, nparams++, lex_str(ls));
@@ -1866,16 +1876,17 @@ static BCReg parse_params(LexState *ls, int needself, int islambda)
   var_add(ls, nparams);
   lua_assert(fs->nactvar == nparams);
   bcreg_reserve(fs, nparams);
-  if (has_paren) lex_check(ls, ')');
+  LJMAD_SYNTAX(if (has_paren))
+  lex_check(ls, ')');
   return nparams;
 }
 
 /* Forward declaration. */
 static void parse_chunk(LexState *ls);
-static void parse_return(LexState *ls, int islambda);
+static void parse_return(LexState *ls LJMAD_SYNTAX(, int islambda));
 
-/* Parse body of a function. */                            /* LD: 2016.04.07 */
-static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCLine line)
+/* Parse body of a function. */
+static void parse_body(LexState *ls, ExpDesc *e, int needself LJMAD_SYNTAX(, int islambda), BCLine line)
 {
   FuncState fs, *pfs = ls->fs;
   FuncScope bl;
@@ -1884,10 +1895,15 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself, int islambda, BCL
   fs_init(ls, &fs);
   fscope_begin(&fs, &bl, 0);
   fs.linedefined = line;
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.04.07 */
   fs.numparams = islambda < 0 ? 0 : (uint8_t)parse_params(ls, needself, islambda);
+#else
+  fs.numparams = (uint8_t)parse_params(ls, needself);
+#endif
   fs.bcbase = pfs->bcbase + pfs->pc;
   fs.bclim = pfs->bclim - pfs->pc;
   bcemit_AD(&fs, BC_FUNCF, 0, 0);  /* Placeholder. */
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.04.07 */
   if (islambda > 0) {
     if (lex_opt(ls, TK_fatarrow)) { islambda=0; goto body; } /* Function */
     lex_opt(ls, TK_arrow);                                   /* Lambda   */
@@ -1900,6 +1916,10 @@ body:
     parse_chunk(ls);
     if (ls->tok != TK_end) lex_match(ls, TK_end, TK_function, line);
   }
+#else
+  parse_chunk(ls);
+  if (ls->tok != TK_end) lex_match(ls, TK_end, TK_function, line);
+#endif
   pt = fs_finish(ls, (ls->lastline = ls->linenumber));
   pfs->bcbase = ls->bcstack + oldbase;  /* May have been reallocated. */
   pfs->bclim = (BCPos)(ls->sizebcstack - oldbase);
@@ -1914,7 +1934,8 @@ body:
       pfs->flags |= PROTO_FIXUP_RETURN;
     pfs->flags |= PROTO_CHILD;
   }
-  if (!islambda) lj_lex_next(ls);
+  LJMAD_SYNTAX(if (!islambda))
+  lj_lex_next(ls);
 }
 
 /* Parse expression list. Last expression is left open. */
@@ -2014,11 +2035,7 @@ static void expr_primary(LexState *ls, ExpDesc *v)
       expr_str(ls, &key);
       bcemit_method(fs, v, &key);
       parse_args(ls, v);
-    } else if (ls->tok == '(' || ls->tok == TK_string || ls->tok == '{'
-#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.04.20 */
-                                                      || ls->tok == '\\'
-#endif
-              ) {
+    } else if (ls->tok == '(' || ls->tok == TK_string || ls->tok == '{' LJMAD_SYNTAX(|| ls->tok == '\\')) {
       expr_tonextreg(fs, v);
       if (LJ_FR2) bcreg_reserve(fs, 1);
       parse_args(ls, v);
@@ -2064,7 +2081,7 @@ static void expr_simple(LexState *ls, ExpDesc *v)
     return;
   case TK_function:
     lj_lex_next(ls);
-    parse_body(ls, v, 0, 0, ls->linenumber);
+    parse_body(ls, v, 0 LJMAD_SYNTAX(, 0), ls->linenumber);
     return;
 #ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.04.07 */
   case '\\':
@@ -2312,7 +2329,7 @@ static void parse_local(LexState *ls)
     v.u.s.aux = fs->varmap[fs->freereg];
     bcreg_reserve(fs, 1);
     var_add(ls, 1);
-    parse_body(ls, &b, 0, 0, ls->linenumber);
+    parse_body(ls, &b, 0 LJMAD_SYNTAX(, 0), ls->linenumber);
     /* bcemit_store(fs, &v, &b) without setting VSTACK_VAR_RW. */
     expr_free(fs, &b);
     expr_toreg(fs, &b, v.u.s.info);
@@ -2377,7 +2394,7 @@ static void parse_func(LexState *ls, BCLine line)
     needself = 1;
     expr_field(ls, &v);
   }
-  parse_body(ls, &b, needself, 0, line);
+  parse_body(ls, &b, needself LJMAD_SYNTAX(, 0), line);
   fs = ls->fs;
   bcemit_store(fs, &v, &b);
   fs->bcbase[fs->pc - 1].line = line;  /* Set line for the store. */
@@ -2396,20 +2413,22 @@ static int parse_isend(LexToken tok)
   }
 }
 
-/* Parse 'return' statement. */                            /* LD: 2016.04.07 */
+/* Parse 'return' statement. */
 static void parse_return(LexState *ls, int islambda)
 {
   BCIns ins;
   FuncState *fs = ls->fs;
+#ifdef LJMAD_LAMBDA_SYNTAX                                 /* LD: 2016.04.07 */
   int has_list = islambda > 0 && lex_opt(ls, '(');
-  if (!islambda) lj_lex_next(ls); /* Skip 'return'. */
+  if (!islambda)
+#endif
+  lj_lex_next(ls); /* Skip 'return'. */
   fs->flags |= PROTO_HAS_RETURN;
-  if (parse_isend(ls->tok) || ls->tok == ';'     /* Bare return. */
-                           || (has_list && ls->tok == ')')) {
+  if (parse_isend(ls->tok) || ls->tok == ';' LJMAD_SYNTAX(|| (has_list && ls->tok == ')'))) { /* Bare return. */
     ins = BCINS_AD(BC_RET0, 0, 1);
   } else {  /* Return with one or more values. */
     ExpDesc e;  /* Receives the _last_ expression in the list. */
-    BCReg nret = !islambda || has_list ? expr_list(ls,&e) : (expr(ls,&e),1);
+    BCReg nret = LJMAD_SYNTAX(islambda && !has_list ? (expr(ls,&e),1) :) expr_list(ls,&e);
     if (nret == 1) {  /* Return one result. */
       if (e.k == VCALL) {  /* Check for tail call. */
 	BCIns *ip = bcptr(fs, &e);
@@ -2431,7 +2450,7 @@ static void parse_return(LexState *ls, int islambda)
       }
     }
   }
-  if (has_list) lex_check(ls, ')');
+  LJMAD_SYNTAX(if (has_list) lex_check(ls, ')');)
   if (fs->flags & PROTO_CHILD)
     bcemit_AJ(fs, BC_UCLO, 0, 0);  /* May need to close upvalues first. */
   bcemit_INS(fs, ins);
@@ -2745,7 +2764,7 @@ static int parse_stmt(LexState *ls)
     parse_local(ls);
     break;
   case TK_return:
-    parse_return(ls, 0);
+    parse_return(ls LJMAD_SYNTAX(, 0));
     return 1;  /* Must be last. */
   case TK_break:
     lj_lex_next(ls);
