@@ -247,7 +247,8 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
 #if LJ_HASFFI && defined(LJMAD_RANGE_SYNTAX)               /* LD: 2016.05.14 */
   if (tvisnumber(top) && tvisnumber(top-1) &&
       (left == 1 || (left == 2 && tvisnumber(top-2)))) {
-    /* Convert 2-3 concatenated numbers into a range, see also rec_cat. */
+    /* Convert 2-3 concatenated numbers into a range,
+       see also lj_record.c:rec_cat. */
     if (!ljmad_range_id) {
         GCstr *name = lj_str_newlit(L, "range");
         CTState *cts = ctype_cts(L);

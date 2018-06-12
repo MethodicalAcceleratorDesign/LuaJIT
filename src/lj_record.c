@@ -1891,20 +1891,22 @@ static TRef rec_cat(jit_State *J, BCReg baseslot, BCReg topslot)
   for (s = baseslot; s <= topslot; s++)
     (void)getslot(J, s);  /* Ensure all arguments have a reference. */
 #if LJ_HASFFI && defined(LJMAD_RANGE_SYNTAX)               /* LD: 2016.05.14 */
-  if (tref_isnumber (top[0]) && tref_isnumber (top[-1])) {
+  int left = top - &J->base[baseslot];
+  if (tref_isnumber(top[0]) && tref_isnumber(top[-1]) &&
+      (left == 1 || (left == 2 && tref_isnumber(top[-2])))) {
     extern CTypeID ljmad_range_id;
     lua_assert(ljmad_range_id != 0);
-    /* Convert 2-3 concatenated numbers into a xrange, see also lj_meta_cat. */
-    TRef dp, tr, *base = &J->base[baseslot];
-    const int has_step = top-2 >= base && tref_isnumber(top[-2]);
+    /* Convert 2-3 concatenated numbers into a range,
+       see also lj_meta.c:lj_meta_cat. */
+    TRef dp, tr, *base = &J->base[baseslot]; (void)base;
     const int esz = sizeof(double);
     /* Allocate cdata xrange. */
     dp  = emitir(IRTG(IR_CNEW, IRT_CDATA), lj_ir_kint(J,ljmad_range_id), TREF_NIL);
     /* First convert integers to numbers. */
-    top = has_step ? top-2 : top-1;
+    top -= left;
     if (tref_isinteger(top[0])) top[0]=emitir(IRTN(IR_CONV), top[0], IRCONV_NUM_INT);
     if (tref_isinteger(top[1])) top[1]=emitir(IRTN(IR_CONV), top[1], IRCONV_NUM_INT);
-    if (has_step)
+    if (left == 2)
     if (tref_isinteger(top[2])) top[2]=emitir(IRTN(IR_CONV), top[2], IRCONV_NUM_INT);
     /* Copy start, stop[, step]; default step is 1. */
     tr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)));
@@ -1912,7 +1914,7 @@ static TRef rec_cat(jit_State *J, BCReg baseslot, BCReg topslot)
     tr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+esz));
          emitir(IRT(IR_XSTORE, IRT_NUM), tr, top[1]);
     tr = emitir(IRT(IR_ADD   , IRT_PTR), dp, lj_ir_kintp(J, sizeof(GCcdata)+2*esz));
-         emitir(IRT(IR_XSTORE, IRT_NUM), tr, has_step ? top[2] : lj_ir_knum(J, 1));
+         emitir(IRT(IR_XSTORE, IRT_NUM), tr, left == 1 ? lj_ir_knum(J, 1) : top[2]);
     J->maxslot = (BCReg)(top - J->base);
     lua_assert(base == top);
     /* rec_check_ir(J); rec_check_slots(J); */
