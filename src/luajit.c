@@ -88,6 +88,7 @@ static void print_usage(void)
   "  -i        Enter interactive mode after executing " LUA_QL("script") ".\n"
   "  -v        Show version information.\n"
   "  -E        Ignore environment variables.\n"
+  "  -a path   Enable auditlog at path.\n"
   "  --        Stop handling options.\n"
   "  -         Execute stdin and stop handling options.\n", stderr);
   fflush(stderr);
@@ -436,6 +437,7 @@ static int collectargs(char **argv, int *flags)
       break;
     case 'e':
       *flags |= FLAGS_EXEC;
+    case 'a':  /* RaptorJIT extension */
     case 'j':  /* LuaJIT extension */
     case 'l':
       *flags |= FLAGS_OPTION;
@@ -495,6 +497,16 @@ static int runargs(lua_State *L, char **argv, int argn)
       break;
     case 'b':  /* LuaJIT extension. */
       return dobytecode(L, argv+i);
+    case 'a': { /* RaptorJIT extension. */
+      const char *filename = argv[i] + 2;
+      if (*filename == '\0') filename = argv[++i];
+      /* XXX Support auditlog file size limit argument. */
+      if (!lj_auditlog_open(filename, 0)) {
+        fprintf(stderr, "unable to open auditlog\n");
+        fflush(stderr);
+      }
+      break;
+    }
     default: break;
     }
   }
