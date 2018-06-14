@@ -509,10 +509,11 @@ LJCORE_O= lj_gc.o lj_err.o lj_char.o lj_bc.o lj_obj.o lj_buf.o \
 	  lj_ir.o lj_opt_mem.o lj_opt_fold.o lj_opt_narrow.o \
 	  lj_opt_dce.o lj_opt_loop.o lj_opt_split.o lj_opt_sink.o \
 	  lj_mcode.o lj_snap.o lj_record.o lj_crecord.o lj_ffrecord.o \
-	  lj_asm.o lj_trace.o lj_gdbjit.o \
+	  lj_asm.o lj_trace.o lj_gdbjit.o lj_auditlog.o \
 	  lj_ctype.o lj_cdata.o lj_cconv.o lj_ccall.o lj_ccallback.o \
 	  lj_carith.o lj_clib.o lj_cparse.o \
 	  lj_lib.o lj_alloc.o lib_aux.o \
+	  lj_dwarf_dwo.o \
 	  $(LJLIB_O) lib_init.o
 
 LJVMCORE_O= $(LJVM_O) $(LJCORE_O)
@@ -616,7 +617,7 @@ E= @echo
 # Make targets.
 ##############################################################################
 
-default all:	$(TARGET_T)
+default all:	$(TARGET_T) $(DWARF_DWO)
 
 amalg:
 	@grep "^[+|]" ljamalg.c
@@ -712,6 +713,18 @@ $(LUAJIT_O):
 $(HOST_O): %.o: %.c
 	$(E) "HOSTCC    $@"
 	$(Q)$(HOST_CC) $(HOST_ACFLAGS) -c -o $@ $<
+
+$(DWARF_DWO): $(ALL_HDRGEN)
+
+$(DWARF_DWO): %.dwo: %.c
+	$(E) "CC(debug) $@"
+	$(Q)$(TARGET_CC) -g3 -fno-eliminate-unused-debug-types -gsplit-dwarf -c $<
+
+# Embed DWARF debug information as binary data available to raptorjit.
+lj_dwarf_dwo.o lj_dwarf_dwo_dyn.o: $(DWARF_DWO)
+	$(E) "EMBED     $@"
+	$(Q)$(LD) -r -b binary -o $@ $<
+	$(Q)$(LD) -shared -b binary -o $(@:.o=_dyn.o) $<
 
 include Makefile.dep
 

@@ -18,6 +18,7 @@
 #include "luajit.h"
 
 #include "lj_arch.h"
+#include "lj_auditlog.h"
 
 #if LJ_TARGET_POSIX
 #include <unistd.h>

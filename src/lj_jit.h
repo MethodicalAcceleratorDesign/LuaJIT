@@ -252,6 +252,7 @@ typedef struct GCtrace {
   MSize szmcode;	/* Size of machine code. */
   MCode *mcode;		/* Start of machine code. */
   MSize mcloop;		/* Offset of loop start in machine code. */
+  uint16_t *szirmcode;  /* Bytes of mcode for each IR instruction (array.) */
   uint16_t nchild;	/* Number of child traces (root trace only). */
   uint16_t spadjust;	/* Stack pointer adjustment (offset in bytes). */
   TraceNo1 traceno;	/* Trace number. */
@@ -259,6 +260,8 @@ typedef struct GCtrace {
   TraceNo1 root;	/* Root trace of side trace (or 0 for root traces). */
   TraceNo1 nextroot;	/* Next root trace for same prototype. */
   TraceNo1 nextside;	/* Next side trace of same root trace. */
+//  TraceNo1 parent;      /* Parent of this trace (or 0 for root traces). */
+//  ExitNo exitno;        /* Exit number in parent (valid for side-traces only). */
   uint8_t sinktags;	/* Trace has SINK tags. */
   uint8_t unused1;
 #ifdef LUAJIT_USE_GDBJIT
@@ -389,6 +392,13 @@ typedef struct FoldState {
   IRIns right[2];	/* Instruction referenced by right operand. */
 } FoldState;
 
+/* Log entry for a bytecode that was recorded. */
+typedef struct BCRecLog {
+    GCproto *pt;		/* Prototype of bytecode function (or NULL). */
+    BCPos pos;		/* Position of bytecode in prototype. */
+    int32_t framedepth;	/* Frame depth when recorded. */
+} BCRecLog;
+
 /* JIT compiler state. */
 typedef struct jit_State {
   GCtrace cur;		/* Current trace. */
@@ -435,6 +445,10 @@ typedef struct jit_State {
   SnapShot *snapbuf;	/* Temp. snapshot buffer. */
   SnapEntry *snapmapbuf;  /* Temp. snapshot map buffer. */
   MSize sizesnapmap;	/* Size of temp. snapshot map buffer. */
+
+  BCRecLog *bclog;	/* Start of of recorded bytecode log. */
+  uint32_t nbclog;	/* Number of logged bytecodes. */
+  uint32_t maxbclog;	/* Max entries in the bytecode log. */
 
   PostProc postproc;	/* Required post-processing after execution. */
 #if LJ_SOFTFP32 || (LJ_32 && LJ_HASFFI)
