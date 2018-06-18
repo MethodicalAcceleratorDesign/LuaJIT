@@ -455,6 +455,7 @@ LJ_FUNC GCstr *lj_ctype_repr(lua_State *L, CTypeID id, GCstr *name);
 LJ_FUNC GCstr *lj_ctype_repr_int64(lua_State *L, uint64_t n, int isunsigned);
 LJ_FUNC GCstr *lj_ctype_repr_complex(lua_State *L, void *sp, CTSize size);
 LJ_FUNC CTState *lj_ctype_init(lua_State *L);
+LJ_FUNC void lj_ctype_log(lua_State *L);
 LJ_FUNC void lj_ctype_freestate(global_State *g);
 
 #endif
