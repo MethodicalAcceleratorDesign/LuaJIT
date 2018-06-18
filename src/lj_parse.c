@@ -28,6 +28,7 @@
 #include "lj_parse.h"
 #include "lj_vm.h"
 #include "lj_vmevent.h"
+#include "lj_auditlog.h"
 
 /* -- Parser structures and definitions ----------------------------------- */
 
@@ -1621,6 +1622,7 @@ static GCproto *fs_finish(LexState *ls, BCLine line)
   ls->vtop = fs->vbase;  /* Reset variable stack. */
   ls->fs = fs->prev;
   lua_assert(ls->fs != NULL || ls->tok == TK_eof);
+  lj_auditlog_new_prototype(pt);
   return pt;
 }
 
