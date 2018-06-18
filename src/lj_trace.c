@@ -163,6 +163,8 @@ static void trace_save(jit_State *J, GCtrace *T)
 #ifdef LUAJIT_USE_PERFTOOLS
   perftools_addtrace(T);
 #endif
+  lj_ctype_log(J->L);
+  // lj_auditlog_trace_stop(J, T);
 }
 
 void LJ_FASTCALL lj_trace_free(global_State *g, GCtrace *T)
@@ -280,7 +282,7 @@ int lj_trace_flushall(lua_State *L)
   ptrdiff_t i;
   if ((J2G(J)->hookmask & HOOK_GC))
     return 1;
-  lj_auditlog_trace_flushall(J)
+  lj_auditlog_trace_flushall(J);
   for (i = (ptrdiff_t)J->sizetrace-1; i > 0; i--) {
     GCtrace *T = traceref(J, i);
     if (T) {
@@ -581,6 +583,9 @@ static int trace_abort(jit_State *J)
       traceref(J, J->exitno)->link = J->exitno;  /* Self-link is blacklisted. */
     }
   }
+
+  lj_ctype_log(J->L);
+  lj_auditlog_trace_abort(J, e);
 
   /* Is there anything to abort? */
   traceno = J->cur.traceno;

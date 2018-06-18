@@ -15,6 +15,7 @@
 #include "lj_ctype.h"
 #include "lj_ccallback.h"
 #include "lj_buf.h"
+#include "lj_auditlog.h"
 
 /* -- C type definitions -------------------------------------------------- */
 
@@ -218,6 +219,7 @@ void lj_ctype_addname(CTState *cts, CType *ct, CTypeID id)
   uint32_t h = ct_hashname(gcref(ct->name));
   ct->next = cts->hash[h];
   cts->hash[h] = (CTypeID1)id;
+  lj_auditlog_new_ctypeid(id, strdata(gco2str(gcref(ct->name))));
 }
 
 /* Get a C type by name, matching the type mask. */
@@ -599,6 +601,7 @@ CTState *lj_ctype_init(lua_State *L)
   cts->tab = ct;
   cts->sizetab = CTTYPETAB_MIN;
   cts->top = CTTYPEINFO_NUM;
+  cts->log = cts->top;
   cts->L = NULL;
   cts->g = G(L);
   for (id = 0; id < CTTYPEINFO_NUM; id++, ct++) {
@@ -620,6 +623,18 @@ CTState *lj_ctype_init(lua_State *L)
   }
   setmref(G(L)->ctype_state, cts);
   return cts;
+}
+
+/* Log all new ctypes. */
+void lj_ctype_log(lua_State *L)
+{
+  global_State *g = G(L);
+  CTState *cts = ctype_ctsG(g);
+  while (cts && cts->log < cts->top) {
+    int id = cts->log++;
+    GCstr *name = lj_ctype_repr(L, id, NULL);
+    lj_auditlog_new_ctypeid(id, strdata(name));
+  }
 }
 
 /* Free C type table and state. */
