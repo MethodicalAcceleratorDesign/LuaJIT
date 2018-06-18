@@ -164,7 +164,7 @@ static void trace_save(jit_State *J, GCtrace *T)
   perftools_addtrace(T);
 #endif
   lj_ctype_log(J->L);
-  // lj_auditlog_trace_stop(J, T);
+  lj_auditlog_trace_stop(J, T);
 }
 
 void LJ_FASTCALL lj_trace_free(global_State *g, GCtrace *T)
@@ -279,6 +279,7 @@ void lj_trace_flushproto(global_State *g, GCproto *pt)
 int lj_trace_flushall(lua_State *L)
 {
   jit_State *J = L2J(L);
+  global_State *g = G(L);
   ptrdiff_t i;
   if ((J2G(J)->hookmask & HOOK_GC))
     return 1;
@@ -295,6 +296,7 @@ int lj_trace_flushall(lua_State *L)
   }
   J->cur.traceno = 0;
   J->freetrace = 0;
+  g->lasttrace = 0;
   /* Clear penalty cache. */
   memset(J->penalty, 0, sizeof(J->penalty));
   /* Free the whole machine code and invalidate all exit stub groups. */
@@ -377,7 +379,7 @@ static void blacklist_pc(GCproto *pt, BCIns *pc)
 }
 
 /* Penalize a bytecode instruction. */
-static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
+static int penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
 {
   uint32_t i, val = PENALTY_MIN;
   for (i = 0; i < PENALTY_SLOTS; i++)
@@ -387,7 +389,7 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
 	    LJ_PRNG_BITS(J, PENALTY_RNDBITS);
       if (val > PENALTY_MAX) {
 	blacklist_pc(pt, pc);  /* Blacklist it, if that didn't help. */
-	return;
+	return 1;
       }
       goto setpenalty;
     }
@@ -399,6 +401,17 @@ setpenalty:
   J->penalty[i].val = (uint16_t)val;
   J->penalty[i].reason = e;
   hotcount_set(J2GG(J), pc+1, val);
+  return 0;
+}
+
+/* Check if this is the last attempt to compile a side trace.
+** (If so the next attempt will just record a fallback to the interpreter.)
+**/
+static int last_try(jit_State *J)
+{
+  GCtrace *parent = traceref(J, J->parent);
+  int count = parent->snap[J->exitno].count;
+  return count+1 >= J->param[JIT_P_hotexit] + J->param[JIT_P_tryside];
 }
 
 /* -- Trace compiler state machine ---------------------------------------- */
@@ -578,11 +591,14 @@ static int trace_abort(jit_State *J)
       if (e == LJ_TRERR_RETRY)
 	hotcount_set(J2GG(J), startpc+1, 1);  /* Immediate retry. */
       else
-	penalty_pc(J, &gcref(J->cur.startpt)->pt, startpc, e);
+        J->final = penalty_pc(J, &gcref(J->cur.startpt)->pt, startpc, e);
     } else {
       traceref(J, J->exitno)->link = J->exitno;  /* Self-link is blacklisted. */
     }
   }
+
+  /* Is this the last attempt at a side trace? */
+  if (J->parent && last_try(J)) J->final = 1;
 
   lj_ctype_log(J->L);
   lj_auditlog_trace_abort(J, e);

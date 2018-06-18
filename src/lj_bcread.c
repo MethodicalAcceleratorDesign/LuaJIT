@@ -311,7 +311,7 @@ GCproto *lj_bcread_proto(LexState *ls)
 {
   GCproto *pt;
   MSize framesize, numparams, flags, sizeuv, sizekgc, sizekn, sizebc, sizept;
-  MSize ofsk, ofsuv, ofsdbg;
+  MSize ofsk, ofsuv, ofsdbg, ofsdeclname = 0;
   MSize sizedbg = 0;
   BCLine firstline = 0, numline = 0;
 
@@ -328,6 +328,7 @@ GCproto *lj_bcread_proto(LexState *ls)
     if (sizedbg) {
       firstline = bcread_uleb128(ls);
       numline = bcread_uleb128(ls);
+      ofsdeclname = bcread_uleb128(ls);
     }
   }
 
@@ -375,12 +376,14 @@ GCproto *lj_bcread_proto(LexState *ls)
     MSize sizeli = (sizebc-1) << (numline < 256 ? 0 : numline < 65536 ? 1 : 2);
     setmref(pt->lineinfo, (char *)pt + ofsdbg);
     setmref(pt->uvinfo, (char *)pt + ofsdbg + sizeli);
+    setmref(pt->declname, (char *)pt + ofsdbg + ofsdeclname);
     bcread_dbg(ls, pt, sizedbg);
     setmref(pt->varinfo, bcread_varinfo(pt));
   } else {
     setmref(pt->lineinfo, NULL);
     setmref(pt->uvinfo, NULL);
     setmref(pt->varinfo, NULL);
+    setmref(pt->declname, NULL);
   }
   lj_auditlog_new_prototype(pt);
   return pt;

@@ -496,6 +496,7 @@ typedef struct jit_State {
   size_t szallmcarea;	/* Total size of all allocated mcode areas. */
 
   TValue errinfo;	/* Additional info element for trace errors. */
+  int8_t final;
 
 #if LJ_HASPROFILE
   GCproto *prev_pt;	/* Previous prototype. */

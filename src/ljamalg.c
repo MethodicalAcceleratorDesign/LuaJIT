@@ -27,6 +27,7 @@
 
 #include "lua.h"
 #include "lauxlib.h"
+#include "lj_debuginfo.h"
 
 #include "lj_gc.c"
 #include "lj_err.c"
@@ -80,6 +81,7 @@
 #include "lj_trace.c"
 #include "lj_gdbjit.c"
 #include "lj_alloc.c"
+#include "lj_dwarf.c"
 #include "lj_auditlog.c"
 
 #include "lib_aux.c"
