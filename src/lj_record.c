@@ -2600,6 +2600,8 @@ void lj_record_setup(jit_State *J)
   J->bc_min = NULL;  /* Means no limit. */
   J->bc_extent = ~(MSize)0;
 
+  J->nbclog = 0;
+
   /* Emit instructions for fixed references. Also triggers initial IR alloc. */
   emitir_raw(IRT(IR_BASE, IRT_PGC), J->parent, J->exitno);
   for (i = 0; i <= 2; i++) {

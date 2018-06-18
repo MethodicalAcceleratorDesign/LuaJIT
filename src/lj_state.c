@@ -160,6 +160,7 @@ static TValue *cpluaopen(lua_State *L, lua_CFunction dummy, void *ud)
 static void close_state(lua_State *L)
 {
   global_State *g = G(L);
+  jit_State *J = L2J(L);
   lj_func_closeuv(L, tvref(L->stack));
   lj_gc_freeall(g);
   lua_assert(gcref(g->gc.root) == obj2gco(L));
@@ -171,6 +172,7 @@ static void close_state(lua_State *L)
   lj_mem_freevec(g, g->strhash, g->strmask+1, GCRef);
   lj_buf_free(g, &g->tmpbuf);
   lj_mem_freevec(g, tvref(L->stack), L->stacksize, TValue);
+  lj_mem_free(g, J->bclog, sizeof(BCRecLog)*J->maxbclog);
   lua_assert(g->gc.total == sizeof(GG_State));
 #ifndef LUAJIT_USE_SYSMALLOC
   if (g->allocf == lj_alloc_f)
@@ -189,6 +191,7 @@ LUA_API lua_State *lua_newstate(lua_Alloc f, void *ud)
   GG_State *GG = (GG_State *)f(ud, NULL, 0, sizeof(GG_State));
   lua_State *L = &GG->L;
   global_State *g = &GG->g;
+  jit_State *J = &GG->J;
   if (GG == NULL || !checkptrGC(GG)) return NULL;
   memset(GG, 0, sizeof(GG_State));
   L->gct = ~LJ_TTHREAD;
@@ -217,6 +220,10 @@ LUA_API lua_State *lua_newstate(lua_Alloc f, void *ud)
   g->gc.total = sizeof(GG_State);
   g->gc.pause = LUAI_GCPAUSE;
   g->gc.stepmul = LUAI_GCMUL;
+  J->maxbclog = 65536;
+  J->bclog = (BCRecLog *)lj_mem_new(L, sizeof(BCRecLog)*J->maxbclog);
+  J->nbclog = 0;
+  if (J->bclog == NULL) return NULL;
   lj_dispatch_init((GG_State *)L);
   L->status = LUA_ERRERR+1;  /* Avoid touching the stack upon memory error. */
   if (lj_vm_cpcall(L, NULL, NULL, cpluaopen) != 0) {
