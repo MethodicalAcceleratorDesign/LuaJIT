@@ -267,7 +267,7 @@ void lj_auditlog_new_prototype(GCproto *pt)
   if (ensure_log_started()) {
     log_GCproto(pt);
     log_event("new_prototype", 1);
-    str_16("GCproto"); /* = */ uint_64((uint64_t)pt);;
+    str_16("GCproto"); /* = */ uint_64((uint64_t)pt);
   }
 }
 

@@ -49,7 +49,7 @@ static LJ_NOINLINE LexChar lex_more(LexState *ls)
   size_t sz;
   const char *p = ls->rfunc(ls->L, ls->rdata, &sz);
   if (p == NULL || sz == 0) return LEX_EOF;
-   lj_auditlog_lex(ls->chunkarg, p, sz);
+  lj_auditlog_lex(ls->chunkarg, p, sz);
   ls->pe = p + sz;
   ls->p = p + 1;
   return (LexChar)(uint8_t)p[0];
