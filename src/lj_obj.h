@@ -17,19 +17,15 @@
 
 /* Memory and GC object sizes. */
 typedef uint32_t MSize;
-#if LJ_GC64
 typedef uint64_t GCSize;
-#else
-typedef uint32_t GCSize;
-#endif
 
 /* Memory reference */
 typedef void * MRef;
 
 #define mref(r, t)  ((t *)(r))
 
-#define setmref(r, p)  ((r) = (void *)(p))
-#define setmrefr(r, v) ((r) = (v))
+#define setmref(r, p) ((r) = (void *)(p))
+#define setmrefr(r, v)  ((r) = (v))
 
 /* -- GC object references (32 bit address space) ------------------------- */
 
@@ -144,7 +140,6 @@ typedef union {
 typedef LJ_ALIGN(8) union TValue {
   uint64_t u64;		/* 64 bit pattern overlaps number. */
   lua_Number n;		/* Number object overlaps split tag/value object. */
-#if LJ_GC64
   GCRef gcr;		/* GCobj reference with tag. */
   int64_t it64;
   struct {
@@ -153,27 +148,7 @@ typedef LJ_ALIGN(8) union TValue {
     , uint32_t it;	/* Internal object tag. Must overlap MSW of number. */
     )
   };
-#else
-  struct {
-    LJ_ENDIAN_LOHI(
-      union {
-	GCRef gcr;	/* GCobj reference (if any). */
-	int32_t i;	/* Integer value. */
-      };
-    , uint32_t it;	/* Internal object tag. Must overlap MSW of number. */
-    )
-  };
-#endif
-#if LJ_FR2
   int64_t ftsz;		/* Frame type and size of previous frame, or PC. */
-#else
-  struct {
-    LJ_ENDIAN_LOHI(
-      GCRef func;	/* Function for next frame (or dummy L). */
-    , FrameLink tp;	/* Link to previous frame. */
-    )
-  } fr;
-#endif
   struct {
     LJ_ENDIAN_LOHI(
       uint32_t lo;	/* Lower 32 bits of number. */
@@ -444,9 +419,6 @@ typedef struct Node {
   TValue val;		/* Value object. Must be first field. */
   TValue key;		/* Key object. */
   MRef next;		/* Hash chain. */
-#if !LJ_GC64
-  MRef freetop;		/* Top of free elements (stored in t->node[0]). */
-#endif
 } Node;
 
 LJ_STATIC_ASSERT(offsetof(Node, val) == 0);
@@ -470,18 +442,15 @@ typedef struct GCtab {
 #define tabref(r)	(&gcref((r))->tab)
 #define noderef(r)	(mref((r), Node))
 #define nextnode(n)	(mref((n)->next, Node))
-#if LJ_GC64
 #define getfreetop(t, n)	(noderef((t)->freetop))
 #define setfreetop(t, n, v)	(setmref((t)->freetop, (v)))
-#else
-#define getfreetop(t, n)	(noderef((n)->freetop))
-#define setfreetop(t, n, v)	(setmref((n)->freetop, (v)))
-#endif
+
 
 /* -- State objects ------------------------------------------------------- */
 
 /* VM states. */
 enum {
+
   LJ_VMST_INTERP,	/* Interpreter. */
   LJ_VMST_C,		/* C function. */
   LJ_VMST_GC,		/* Garbage collector. */
@@ -489,6 +458,14 @@ enum {
   LJ_VMST_RECORD,	/* Trace recorder. */
   LJ_VMST_OPT,		/* Optimizer. */
   LJ_VMST_ASM,		/* Assembler. */
+  /* JIT trace states.
+  ** These are "abstract" states that logically exist but are never
+  ** directly used for the value of global_State.vmstate.
+  */
+  LJ_VMST_HEAD,   /* Trace mcode before loop */
+  LJ_VMST_LOOP,   /* Trace mcode inside loop */
+  LJ_VMST_JGC,    /* GC invoked from JIT mcode. */
+  LJ_VMST_FFI,    /* Other code outside trace mcode */
   LJ_VMST__MAX
 };
 
