@@ -264,9 +264,6 @@ typedef struct GCtrace {
   ExitNo exitno;        /* Exit number in parent (valid for side-traces only). */
   uint8_t sinktags;	/* Trace has SINK tags. */
   uint8_t unused1;
-#ifdef LUAJIT_USE_GDBJIT
-  void *gdbjit_entry;	/* GDB JIT entry. */
-#endif
 } GCtrace;
 
 #define gco2trace(o)	check_exp((o)->gch.gct == ~LJ_TTRACE, (GCtrace *)(o))
@@ -377,13 +374,8 @@ enum {
   ((TValue *)(((intptr_t)&J->ksimd[2*(n)] + 15) & ~(intptr_t)15))
 
 /* Set/reset flag to activate the SPLIT pass for the current trace. */
-#if LJ_SOFTFP32 || (LJ_32 && LJ_HASFFI)
-#define lj_needsplit(J)		(J->needsplit = 1)
-#define lj_resetsplit(J)	(J->needsplit = 0)
-#else
 #define lj_needsplit(J)		UNUSED(J)
 #define lj_resetsplit(J)	UNUSED(J)
-#endif
 
 /* Fold state is used to fold instructions on-the-fly. */
 typedef struct FoldState {
@@ -437,8 +429,6 @@ typedef struct jit_State {
   uint32_t k32[LJ_K32__MAX];  /* Ditto for 4 byte constants. */
 
   IRIns *irbuf;		/* Temp. IR instruction buffer. Biased with REF_BIAS. */
-  IRRef irtoplim;	/* Upper limit of instuction buffer (biased). */
-  IRRef irbotlim;	/* Lower limit of instuction buffer (biased). */
   IRRef loopref;	/* Last loop reference or ref of final LOOP (or 0). */
 
   MSize sizesnap;	/* Size of temp. snapshot buffer. */
@@ -451,9 +441,6 @@ typedef struct jit_State {
   uint32_t maxbclog;	/* Max entries in the bytecode log. */
 
   PostProc postproc;	/* Required post-processing after execution. */
-#if LJ_SOFTFP32 || (LJ_32 && LJ_HASFFI)
-  uint8_t needsplit;	/* Need SPLIT pass. */
-#endif
   uint8_t retryrec;	/* Retry recording. */
 
   GCRef *trace;		/* Array of traces. */
@@ -498,15 +485,12 @@ typedef struct jit_State {
   TValue errinfo;	/* Additional info element for trace errors. */
   int8_t final;
 
-#if LJ_HASPROFILE
-  GCproto *prev_pt;	/* Previous prototype. */
-  BCLine prev_line;	/* Previous line. */
-  int prof_mode;	/* Profiling mode: 0, 'f', 'l'. */
-#endif
+//#if LJ_HASPROFILE
+//  GCproto *prev_pt;	/* Previous prototype. */
+//  BCLine prev_line;	/* Previous line. */
+//  int prof_mode;	/* Profiling mode: 0, 'f', 'l'. */
+//#endif
 }
-#if LJ_TARGET_ARM
-LJ_ALIGN(16)		/* For DISPATCH-relative addresses in assembler part. */
-#endif
 jit_State;
 
 /* Trivial PRNG e.g. used for penalty randomization. */
