@@ -24,66 +24,38 @@ typedef uint32_t GCSize;
 #endif
 
 /* Memory reference */
-typedef struct MRef {
-#if LJ_GC64
-  uint64_t ptr64;	/* True 64 bit pointer. */
-#else
-  uint32_t ptr32;	/* Pseudo 32 bit pointer. */
-#endif
-} MRef;
+typedef void * MRef;
 
-#if LJ_GC64
-#define mref(r, t)	((t *)(void *)(r).ptr64)
+#define mref(r, t)  ((t *)(r))
 
-#define setmref(r, p)	((r).ptr64 = (uint64_t)(void *)(p))
-#define setmrefr(r, v)	((r).ptr64 = (v).ptr64)
-#else
-#define mref(r, t)	((t *)(void *)(uintptr_t)(r).ptr32)
-
-#define setmref(r, p)	((r).ptr32 = (uint32_t)(uintptr_t)(void *)(p))
-#define setmrefr(r, v)	((r).ptr32 = (v).ptr32)
-#endif
+#define setmref(r, p)  ((r) = (void *)(p))
+#define setmrefr(r, v) ((r) = (v))
 
 /* -- GC object references (32 bit address space) ------------------------- */
 
+/* Forward declaration. */
+union GCobj;
+
 /* GCobj reference */
-typedef struct GCRef {
-#if LJ_GC64
-  uint64_t gcptr64;	/* True 64 bit pointer. */
-#else
-  uint32_t gcptr32;	/* Pseudo 32 bit pointer. */
-#endif
-} GCRef;
+typedef union GCobj * GCRef;
 
 /* Common GC header for all collectable objects. */
-#define GCHeader	GCRef nextgc; uint8_t marked; uint8_t gct
+#define GCHeader  GCRef nextgc; uint8_t marked; uint8_t gct
 /* This occupies 6 bytes, so use the next 2 bytes for non-32 bit fields. */
 
-#if LJ_GC64
-#define gcref(r)	((GCobj *)(r).gcptr64)
-#define gcrefp(r, t)	((t *)(void *)(r).gcptr64)
-#define gcrefu(r)	((r).gcptr64)
-#define gcrefeq(r1, r2)	((r1).gcptr64 == (r2).gcptr64)
+#define gcref(r)  (r)
+#define gcrefp(r, t)  ((t *)(void *)(r))
+#define gcrefu(r) ((uint64_t)(r))
+#define gcrefeq(r1, r2) ((r1)==(r2))
 
-#define setgcref(r, gc)	((r).gcptr64 = (uint64_t)&(gc)->gch)
+#define setgcref(r, gc) ((r) = (GCobj *)&(gc)->gch)
 #define setgcreft(r, gc, it) \
-  (r).gcptr64 = (uint64_t)&(gc)->gch | (((uint64_t)(it)) << 47)
-#define setgcrefp(r, p)	((r).gcptr64 = (uint64_t)(p))
-#define setgcrefnull(r)	((r).gcptr64 = 0)
-#define setgcrefr(r, v)	((r).gcptr64 = (v).gcptr64)
-#else
-#define gcref(r)	((GCobj *)(uintptr_t)(r).gcptr32)
-#define gcrefp(r, t)	((t *)(void *)(uintptr_t)(r).gcptr32)
-#define gcrefu(r)	((r).gcptr32)
-#define gcrefeq(r1, r2)	((r1).gcptr32 == (r2).gcptr32)
+  (r) = (GCobj *)((uint64_t)&(gc)->gch | ((uint64_t)(it) << 47))
+#define setgcrefp(r, p) ((r) = (GCobj *)p)
+#define setgcrefnull(r) ((r) = NULL)
+#define setgcrefr(r, v) ((r) = (v))
 
-#define setgcref(r, gc)	((r).gcptr32 = (uint32_t)(uintptr_t)&(gc)->gch)
-#define setgcrefp(r, p)	((r).gcptr32 = (uint32_t)(uintptr_t)(p))
-#define setgcrefnull(r)	((r).gcptr32 = 0)
-#define setgcrefr(r, v)	((r).gcptr32 = (v).gcptr32)
-#endif
-
-#define gcnext(gc)	(gcref((gc)->gch.nextgc))
+#define gcnext(gc)  (gcref((gc)->gch.nextgc))
 
 /* IMPORTANT NOTE:
 **
@@ -358,9 +330,7 @@ typedef struct GCproto {
   uint8_t numparams;	/* Number of parameters. */
   uint8_t framesize;	/* Fixed frame size. */
   MSize sizebc;		/* Number of bytecode instructions. */
-#if LJ_GC64
   uint32_t unused_gc64;
-#endif
   GCRef gclist;
   MRef k;		/* Split constant array (points to the middle). */
   MRef uv;		/* Upvalue list. local slot|0x8000 or parent uv idx. */
