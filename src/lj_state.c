@@ -259,9 +259,9 @@ LUA_API void lua_close(lua_State *L)
   global_State *g = G(L);
   int i;
   L = mainthread(g);  /* Only the main thread can be closed. */
-#if LJ_HASPROFILE
-  luaJIT_profile_stop(L);
-#endif
+//#if LJ_HASPROFILE
+//  luaJIT_profile_stop(L);
+//#endif
   setgcrefnull(g->cur_L);
   lj_func_closeuv(L, tvref(L->stack));
   lj_gc_separateudata(g, 1);  /* Separate udata which have GC metamethods. */

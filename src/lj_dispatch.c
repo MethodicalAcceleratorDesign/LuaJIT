@@ -42,12 +42,12 @@ LJ_STATIC_ASSERT(GG_NUM_ASMFF == FF_NUM_ASMFUNC);
 #include <math.h>
 LJ_FUNCA_NORET void LJ_FASTCALL lj_ffh_coroutine_wrap_err(lua_State *L,
 							  lua_State *co);
-#if !LJ_HASJIT
-#define lj_dispatch_stitch	lj_dispatch_ins
-#endif
-#if !LJ_HASPROFILE
-#define lj_dispatch_profile	lj_dispatch_ins
-#endif
+//#if !LJ_HASJIT
+//#define lj_dispatch_stitch	lj_dispatch_ins
+//#endif
+//#if !LJ_HASPROFILE
+//#define lj_dispatch_profile	lj_dispatch_ins
+//#endif
 
 #define GOTFUNC(name)	(ASMFunction)name,
 static const ASMFunction dispatch_got[] = {
