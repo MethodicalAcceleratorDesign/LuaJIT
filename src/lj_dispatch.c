@@ -27,9 +27,9 @@
 #endif
 #include "lj_trace.h"
 #include "lj_dispatch.h"
-#if LJ_HASPROFILE
-#include "lj_profile.h"
-#endif
+//#if LJ_HASPROFILE
+//#include "lj_profile.h"
+//#endif
 #include "lj_vm.h"
 #include "luajit.h"
 
@@ -110,9 +110,9 @@ void lj_dispatch_update(global_State *g)
   mode |= G2J(g)->state != LJ_TRACE_IDLE ?
 	    (DISPMODE_REC|DISPMODE_INS|DISPMODE_CALL) : 0;
 #endif
-#if LJ_HASPROFILE
-  mode |= (g->hookmask & HOOK_PROFILE) ? (DISPMODE_PROF|DISPMODE_INS) : 0;
-#endif
+//#if LJ_HASPROFILE
+//  mode |= (g->hookmask & HOOK_PROFILE) ? (DISPMODE_PROF|DISPMODE_INS) : 0;
+//#endif
   mode |= (g->hookmask & (LUA_MASKLINE|LUA_MASKCOUNT)) ? DISPMODE_INS : 0;
   mode |= (g->hookmask & LUA_MASKCALL) ? DISPMODE_CALL : 0;
   mode |= (g->hookmask & LUA_MASKRET) ? DISPMODE_RET : 0;
@@ -368,19 +368,19 @@ static void callhook(lua_State *L, int event, BCLine line)
     /* Top frame, nextframe = NULL. */
     ar.i_ci = (int)((L->base-1) - tvref(L->stack));
     lj_state_checkstack(L, 1+LUA_MINSTACK);
-#if LJ_HASPROFILE && !LJ_PROFILE_SIGPROF
-    lj_profile_hook_enter(g);
-#else
+//#if LJ_HASPROFILE && !LJ_PROFILE_SIGPROF
+//    lj_profile_hook_enter(g);
+//#else
     hook_enter(g);
-#endif
+//#endif
     hookf(L, &ar);
     lua_assert(hook_active(g));
     setgcref(g->cur_L, obj2gco(L));
-#if LJ_HASPROFILE && !LJ_PROFILE_SIGPROF
-    lj_profile_hook_leave(g);
-#else
+//#if LJ_HASPROFILE && !LJ_PROFILE_SIGPROF
+//    lj_profile_hook_leave(g);
+//#else
     hook_leave(g);
-#endif
+//#endif
   }
 }
 
@@ -534,24 +534,24 @@ void LJ_FASTCALL lj_dispatch_stitch(jit_State *J, const BCIns *pc)
 }
 #endif
 
-#if LJ_HASPROFILE
-/* Profile dispatch. */
-void LJ_FASTCALL lj_dispatch_profile(lua_State *L, const BCIns *pc)
-{
-  ERRNO_SAVE
-  GCfunc *fn = curr_func(L);
-  GCproto *pt = funcproto(fn);
-  void *cf = cframe_raw(L->cframe);
-  const BCIns *oldpc = cframe_pc(cf);
-  global_State *g;
-  setcframe_pc(cf, pc);
-  L->top = L->base + cur_topslot(pt, pc, cframe_multres_n(cf));
-  lj_profile_interpreter(L);
-  setcframe_pc(cf, oldpc);
-  g = G(L);
-  setgcref(g->cur_L, obj2gco(L));
-  setvmstate(g, INTERP);
-  ERRNO_RESTORE
-}
-#endif
+//#if LJ_HASPROFILE
+///* Profile dispatch. */
+//void LJ_FASTCALL lj_dispatch_profile(lua_State *L, const BCIns *pc)
+//{
+//  ERRNO_SAVE
+//  GCfunc *fn = curr_func(L);
+//  GCproto *pt = funcproto(fn);
+//  void *cf = cframe_raw(L->cframe);
+//  const BCIns *oldpc = cframe_pc(cf);
+//  global_State *g;
+//  setcframe_pc(cf, pc);
+//  L->top = L->base + cur_topslot(pt, pc, cframe_multres_n(cf));
+//  lj_profile_interpreter(L);
+//  setcframe_pc(cf, oldpc);
+//  g = G(L);
+//  setgcref(g->cur_L, obj2gco(L));
+//  setvmstate(g, INTERP);
+//  ERRNO_RESTORE
+//}
+//#endif
 
