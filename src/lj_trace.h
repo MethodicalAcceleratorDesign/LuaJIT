@@ -12,6 +12,9 @@
 #include "lj_jit.h"
 #include "lj_dispatch.h"
 
+/* Variable to disable/enable extra LJ traces, defined in lj_trace.c. */
+extern int mad_ljtrace_debug;                       /* LD: 2019.02.21 (Dario) */
+
 /* Trace errors. */
 typedef enum {
 #define TREDEF(name, msg)	LJ_TRERR_##name,

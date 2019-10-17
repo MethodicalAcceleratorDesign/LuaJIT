@@ -89,6 +89,8 @@ void lj_dispatch_init_hotcount(global_State *g)
   uint32_t i;
   for (i = 0; i < HOTCOUNT_SIZE; i++)
     hotcount[i] = start;
+  /* Variable to disable/enable extra LJ traces: see lj_trace.[hc] */
+  mad_ljtrace_debug = 1;                            /* LD: 2019.02.21 (Dario) */
 }
 #endif
 
