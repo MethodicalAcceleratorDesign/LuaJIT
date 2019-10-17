@@ -35,43 +35,47 @@
 #include <stdio.h>                                  /* LD: 2019.02.21 (Dario) */
 
 /* Global variables to disable/enable extra LJ traces from LuaJIT FFI. */
-int  mad_ljtrace_debug = 0;
-char mad_ljtrace_message[120] = "";
+/* Warning: not thread safe! */
+int  mad_ljtrace_debug         = 0 ;
+char mad_ljtrace_message[ 120] = "";
+char mad_ljtrace_hottbls[5000] = "";
 
 static void /* Print hotcount table */
 print_hotcount_table(jit_State *J)
 {
-  fprintf(stderr,"**** HOTCOUNT TABLE\n");
+  int cnt = snprintf(mad_ljtrace_hottbls, sizeof mad_ljtrace_hottbls,
+		     "**** HOTCOUNT TABLE\n");
 
   for(int i=0;i<HOTCOUNT_SIZE;i+=8) {
-    fprintf(stderr,"  [%2d]=%3d \t [%2d]=%3d \t [%2d]=%3d \t [%2d]=%3d \t"
-		    " [%2d]=%3d \t [%2d]=%3d \t [%2d]=%3d \t [%2d]=%3d\n",
-      i+0, (J2GG(J))->hotcount[i+0], i+1, (J2GG(J))->hotcount[i+1],
-      i+2, (J2GG(J))->hotcount[i+2], i+3, (J2GG(J))->hotcount[i+3],
-      i+4, (J2GG(J))->hotcount[i+4], i+5, (J2GG(J))->hotcount[i+5],
-      i+6, (J2GG(J))->hotcount[i+6], i+7, (J2GG(J))->hotcount[i+7]);
+    cnt += snprintf(mad_ljtrace_hottbls+cnt, sizeof mad_ljtrace_hottbls-cnt,
+		    " [%2d]=%3d  [%2d]=%3d  [%2d]=%3d  [%2d]=%3d"
+		    " [%2d]=%3d  [%2d]=%3d  [%2d]=%3d  [%2d]=%3d\n",
+		    i+0,(J2GG(J))->hotcount[i+0], i+1,(J2GG(J))->hotcount[i+1],
+		    i+2,(J2GG(J))->hotcount[i+2], i+3,(J2GG(J))->hotcount[i+3],
+		    i+4,(J2GG(J))->hotcount[i+4], i+5,(J2GG(J))->hotcount[i+5],
+		    i+6,(J2GG(J))->hotcount[i+6], i+7,(J2GG(J))->hotcount[i+7]);
   }
 }
 
 static void /* Print hotpenalty table */
 print_hotpenalty_table(jit_State *J)
 {
-  fprintf(stderr,"**** HOTPENALTY TABLE penaltyslot=%u (round-robin index)\n",
+  int cnt = strlen(mad_ljtrace_hottbls);
+  cnt += snprintf(mad_ljtrace_hottbls+cnt, sizeof mad_ljtrace_hottbls-cnt,
+	  "**** HOTPENALTY TABLE penaltyslot=%u (round-robin index)\n",
 	  J->penaltyslot);
 
   for (int i=0; i<PENALTY_SLOTS; i++) {
+    if (J->penalty[i].val == 0 && i != J->penaltyslot) continue;
 #if LJ_GC64
-    fprintf(stderr,"  [%u]:\tPC = %12lx\t val = %5u\t reason = %2u \n",
+    cnt += snprintf(mad_ljtrace_hottbls+cnt, sizeof mad_ljtrace_hottbls-cnt,
+		    " [%2u]:  PC = 0x%012lx  penalty = %5u  reason = %2u\n",
 	    i, J->penalty[i].pc.ptr64, J->penalty[i].val, J->penalty[i].reason);
 #else
-    fprintf(stderr,"  [%u]:\tPC = %8x\t val = %5u\t reason = %2u \n",
+    cnt += snprintf(mad_ljtrace_hottbls+cnt, sizeof mad_ljtrace_hottbls-cnt,
+		    " [%2u]:  PC = 0x%08x  penalty = %5u  reason = %2u\n",
 	    i, J->penalty[i].pc.ptr32, J->penalty[i].val, J->penalty[i].reason);
 #endif
-
-    if(J->penalty[i].val == 0) {
-      fprintf(stderr,"  [%u]:\t... \t \t \t ... \t\t ...\n",i+1);
-      break;
-    }
   }
 }
 
