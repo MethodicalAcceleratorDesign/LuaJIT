@@ -453,7 +453,7 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
 setpenalty:
   if (mad_ljtrace_debug) {                          /* LD: 2019.01.25 (Dario) */
     int cnt = snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-	     "---- TRACE %d info abort penalty=%u errno=%d -- PC=%p",
+	     "---- TRACE %d info abort pc penalty=%u errno=%d -- PC=%p",
 	     J->cur.traceno, val, e, pc);
     if (mad_ljtrace_debug > 1)
       snprintf(mad_ljtrace_message+cnt, sizeof mad_ljtrace_message - cnt,
