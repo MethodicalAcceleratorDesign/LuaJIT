@@ -654,11 +654,9 @@ static int trace_abort(jit_State *J)
       }
       traceref(J, J->exitno)->link = J->exitno;  /* Self-link is blacklisted. */
     }
-  } else {
-    if (mad_ljtrace_debug) {                        /* LD: 2019.01.25 (Dario) */
-      fprintf(stdout, "---- TRACE %d info abort no penalty errno=%d -- PC=%p\n",
-	  J->cur.traceno, e, startpc);
-    }
+  } else if (mad_ljtrace_debug) {                   /* LD: 2019.01.25 (Dario) */
+    fprintf(stdout, "---- TRACE %d info abort no penalty errno=%d -- PC=%p\n",
+ 	    J->cur.traceno, e, startpc);
   }
 
   /* Is there anything to abort? */
