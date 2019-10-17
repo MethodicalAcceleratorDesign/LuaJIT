@@ -431,9 +431,9 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
       if (val > PENALTY_MAX) {
 	if (mad_ljtrace_debug) {                    /* LD: 2019.01.25 (Dario) */
 	  snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-	  	   "---- TRACE %d info blacklist errno=%d valpenalty=%u"
+		   "---- TRACE %d info blacklist penalty=%u errno=%d"
 			  " > %u -- PC=%p [%d]", J->cur.traceno,
-	    e, val, PENALTY_MAX, pc, (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
+	    val, e, PENALTY_MAX, pc, (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
 	}
 	blacklist_pc(pt, pc);  /* Blacklist it, if that didn't help. */
 	return;
@@ -447,9 +447,9 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
 setpenalty:
   if (mad_ljtrace_debug) {                          /* LD: 2019.01.25 (Dario) */
     snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-	     "---- TRACE %d info abort penalty pc errno=%d valpenalty=%u"
-	     " -- PC=%p [%d]",
-      J->cur.traceno, e, val, pc, (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
+	     "---- TRACE %d info abort penalty=%u errno=%d"
+	     " -- PC=%p [%d]", J->cur.traceno,
+	     val, e, pc, (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
   }
   J->penalty[i].val = (uint16_t)val;
   J->penalty[i].reason = e;
@@ -591,8 +591,8 @@ static void trace_stop(jit_State *J)
 	       traceno, startpc, (u32ptr(startpc+1)>>2) & (HOTCOUNT_SIZE-1));
     else                /* side trace [TODO check TraceAnalyse.mad] */
       snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-               "---- TRACE %d info success side trace compilation -- PC=%p",
-                traceno, startpc);
+	       "---- TRACE %d info success side trace compilation -- PC=%p",
+		traceno, startpc);
   }
 
   L = J->L;
@@ -659,7 +659,7 @@ static int trace_abort(jit_State *J)
 	penalty_pc(J, &gcref(J->cur.startpt)->pt, startpc, e);
     } else {
       if (mad_ljtrace_debug) {                      /* LD: 2019.01.25 (Dario) */
- 	snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
+	snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
 		 "---- TRACE %d info abort self-link blacklisted errno=%d "
 		 "-- PC=%p", J->cur.traceno, e, startpc);
       }
@@ -668,7 +668,7 @@ static int trace_abort(jit_State *J)
   } else if (mad_ljtrace_debug) {                   /* LD: 2019.01.25 (Dario) */
     snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
 	     "---- TRACE %d info abort no penalty errno=%d -- PC=%p",
- 	     J->cur.traceno, e, startpc);
+	     J->cur.traceno, e, startpc);
   }
 
   /* Is there anything to abort? */
