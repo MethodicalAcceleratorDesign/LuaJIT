@@ -164,6 +164,7 @@ static void print_jit_status(lua_State *L)
     fputs(s, stdout);
   }
   putc('\n', stdout);
+  lua_settop(L, 0);  /* clear stack */
 }
 
 static void createargtable(lua_State *L, char **argv, int argc, int argf)
@@ -435,6 +436,7 @@ static int collectargs(char **argv, int *flags)
       break;
     case 'e':
       *flags |= FLAGS_EXEC;
+      /* fallthrough */
     case 'j':  /* LuaJIT extension */
     case 'l':
       *flags |= FLAGS_OPTION;

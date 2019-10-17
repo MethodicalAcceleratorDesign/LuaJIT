@@ -35,6 +35,11 @@
 #define LUAJIT_VERSION_SYM	luaJIT_version_2_1_0_beta3
 #define LUAJIT_COPYRIGHT	"Copyright (C) 2005-2017 Mike Pall"
 #define LUAJIT_URL		"http://luajit.org/"
+#ifdef  LUAJIT_ENABLE_GC64
+#define LUAJIT_GCMODE           "GC64"
+#else
+#define LUAJIT_GCMODE           "GC32"
+#endif
 
 /* Modes for luaJIT_setmode. */
 #define LUAJIT_MODE_MASK	0x00ff
