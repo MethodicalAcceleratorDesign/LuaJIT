@@ -430,10 +430,12 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
 	    LJ_PRNG_BITS(J, PENALTY_RNDBITS);
       if (val > PENALTY_MAX) {
 	if (mad_ljtrace_debug) {                    /* LD: 2019.01.25 (Dario) */
-	  snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-		   "---- TRACE %d info blacklist penalty=%u errno=%d"
-			  " > %u -- PC=%p [%d]", J->cur.traceno,
-	    val, e, PENALTY_MAX, pc, (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
+	  int cnt = snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
+			     "---- TRACE %d info blacklist penalty=%u > %u errno=%d"
+			     " -- PC=%p", J->cur.traceno, val, PENALTY_MAX, e, pc);
+	  if (mad_ljtrace_debug > 1)
+	    snprintf(mad_ljtrace_message+cnt, sizeof mad_ljtrace_message - cnt,
+		     " [%d]", (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
 	}
 	blacklist_pc(pt, pc);  /* Blacklist it, if that didn't help. */
 	return;
@@ -446,10 +448,12 @@ static void penalty_pc(jit_State *J, GCproto *pt, BCIns *pc, TraceError e)
   setmref(J->penalty[i].pc, pc);
 setpenalty:
   if (mad_ljtrace_debug) {                          /* LD: 2019.01.25 (Dario) */
-    snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-	     "---- TRACE %d info abort penalty=%u errno=%d"
-	     " -- PC=%p [%d]", J->cur.traceno,
-	     val, e, pc, (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
+    int cnt = snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
+	     "---- TRACE %d info abort penalty=%u errno=%d -- PC=%p",
+	     J->cur.traceno, val, e, pc);
+    if (mad_ljtrace_debug > 1)
+      snprintf(mad_ljtrace_message+cnt, sizeof mad_ljtrace_message - cnt,
+	       " [%d]", (u32ptr(pc+1)>>2) & (HOTCOUNT_SIZE-1));
   }
   J->penalty[i].val = (uint16_t)val;
   J->penalty[i].reason = e;
@@ -585,11 +589,14 @@ static void trace_stop(jit_State *J)
 
   if (mad_ljtrace_debug) {                          /* LD: 2019.02.22 (Dario) */
     BCIns *startpc = mref(J->cur.startpc, BCIns);
-    if (J->parent == 0) /* root trace [TODO check TraceAnalyse.mad] */
-      snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
-	       "---- TRACE %d info success root trace compilation -- PC=%p [%d]",
-	       traceno, startpc, (u32ptr(startpc+1)>>2) & (HOTCOUNT_SIZE-1));
-    else                /* side trace [TODO check TraceAnalyse.mad] */
+    if (J->parent == 0) { /* root trace [TODO check TraceAnalyse.mad] */
+      int cnt = snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
+	       "---- TRACE %d info success root trace compilation -- PC=%p",
+	       traceno, startpc);
+      if (mad_ljtrace_debug > 1)
+	snprintf(mad_ljtrace_message+cnt, sizeof mad_ljtrace_message - cnt,
+		 " [%d]", (u32ptr(startpc+1)>>2) & (HOTCOUNT_SIZE-1));
+    } else               /* side trace [TODO check TraceAnalyse.mad] */
       snprintf(mad_ljtrace_message, sizeof mad_ljtrace_message,
 	       "---- TRACE %d info success side trace compilation -- PC=%p",
 		traceno, startpc);
