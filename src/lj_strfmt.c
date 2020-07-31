@@ -1,6 +1,6 @@
 /*
 ** String formatting.
-** Copyright (C) 2005-2017 Mike Pall. See Copyright Notice in luajit.h
+** Copyright (C) 2005-2020 Mike Pall. See Copyright Notice in luajit.h
 */
 
 #include <stdio.h>
@@ -320,7 +320,7 @@ SBuf *lj_strfmt_putfxint(SBuf *sb, SFormat sf, uint64_t k)
   if ((sf & STRFMT_F_LEFT))
     while (width-- > pprec) *p++ = ' ';
 
-  lua_assert(need == (MSize)(p - ps));
+  lj_assertX(need == (MSize)(p - ps), "miscalculated format size");
   setsbufP(sb, p);
   return sb;
 }
@@ -449,7 +449,7 @@ const char *lj_strfmt_pushvf(lua_State *L, const char *fmt, va_list argp)
     case STRFMT_ERR:
     default:
       lj_buf_putb(sb, '?');
-      lua_assert(0);
+      lj_assertL(0, "bad string format near offset %d", fs.len);
       break;
     }
   }

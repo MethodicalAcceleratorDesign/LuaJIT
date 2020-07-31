@@ -1,7 +1,7 @@
 ------------------------------------------------------------------------------
 -- DynASM x86/x64 module.
 --
--- Copyright (C) 2005-2017 Mike Pall. All rights reserved.
+-- Copyright (C) 2005-2020 Mike Pall. All rights reserved.
 -- See dynasm.lua for full copyright notice.
 ------------------------------------------------------------------------------
 
@@ -1537,8 +1537,8 @@ local map_op = {
   vrcpss_3 =	"rrro:F30FV53rM|rrx/ood:",
   vrsqrtps_2 =	"rmoy:0Fu52rM",
   vrsqrtss_3 =	"rrro:F30FV52rM|rrx/ood:",
-  vroundpd_3 =	"rmioy:660F3AV09rMU",
-  vroundps_3 =	"rmioy:660F3AV08rMU",
+  vroundpd_3 =	"rmioy:660F3Au09rMU",
+  vroundps_3 =	"rmioy:660F3Au08rMU",
   vroundsd_4 =	"rrrio:660F3AV0BrMU|rrxi/ooq:",
   vroundss_4 =	"rrrio:660F3AV0ArMU|rrxi/ood:",
   vshufpd_4 =	"rrmioy:660FVC6rMU",
@@ -1852,7 +1852,7 @@ end
 
 ------------------------------------------------------------------------------
 
-local map_vexarg = { u = false, v = 1, V = 2 }
+local map_vexarg = { u = false, v = 1, V = 2, w = 3 }
 
 -- Process pattern string.
 local function dopattern(pat, args, sz, op, needrex)
