@@ -255,7 +255,7 @@ TValue *lj_meta_cat(lua_State *L, TValue *top, int left)
         CType *ct;
         CTypeID id = lj_ctype_getname(cts, &ct, name, 1u<<CT_STRUCT);
         if (!id) lj_err_optype(L, top-left, LJ_ERR_OPCAT);
-        lua_assert(ctype_isstruct(ct->info));
+        lj_assertL(ctype_isstruct(ct->info), "CTYPE struct range not found");
         // fprintf(stderr, "**** id=%d, ctinfo=0x%x, is_struct=%d, name=%s\n",id,
         // ct->info, ctype_isstruct(ct->info), strdata(gcrefp(cts->tab[id].name,GCstr)));
         ljmad_range_id = id;

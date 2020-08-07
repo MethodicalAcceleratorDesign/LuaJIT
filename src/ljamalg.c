@@ -89,7 +89,7 @@
 
 #ifdef LJMAD_ASSERT_EXTRA
 /* special assert that loops to let the debugger to catch the process through
-   its PID and perform a backtrace. (see also luaconf.c) */
+   its PID and perform a backtrace. (see also luaconf.h) */
 
 static volatile int __assert_foo;
 void __assert_fail(const char *assertion, const char *file, int line,
