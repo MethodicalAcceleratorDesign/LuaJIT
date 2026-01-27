@@ -1913,6 +1913,7 @@ static void parse_body(LexState *ls, ExpDesc *e, int needself LJMAD_SYNTAX(, int
     lj_parse_keepstr2(ls, pfs);
   } else if (islambda < 0) {                                 /* Deferred */
     parse_return(ls, islambda);
+    lj_parse_keepstr2(ls, pfs);
   } else {
 body:
     parse_chunk(ls);
